@@ -8,7 +8,7 @@ cd "$SCRIPT_DIR"
 if go run . \
   -send \
   -to "delqn@me.com" \
-  -subject "This is a test from CODEX via MCP" \
+  -subject "This is a test from CODEX" \
   -body "Just build something"; then
   set +x
   echo "Send succeeded"
