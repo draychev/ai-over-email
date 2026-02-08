@@ -105,7 +105,7 @@ func toolsList() []tool {
 	return []tool{
 		{
 			Name:        "list_emails",
-			Description: "List the most recent emails.",
+			Description: "List emails from a mailbox (recent by default or all).",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -114,12 +114,41 @@ func toolsList() []tool {
 						"description": "Number of most recent emails to return.",
 						"default":     10,
 					},
+					"all": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Return all emails in the mailbox.",
+						"default":     false,
+					},
 					"mailbox": map[string]interface{}{
 						"type":        "string",
 						"description": "Mailbox name (default INBOX).",
 						"default":     "INBOX",
 					},
 				},
+			},
+		},
+		{
+			Name:        "search_emails",
+			Description: "Search emails by a rough query over from/subject/body.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Search query text.",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"description": "Max number of results to return (default 50).",
+						"default":     50,
+					},
+					"mailbox": map[string]interface{}{
+						"type":        "string",
+						"description": "Mailbox name (default INBOX).",
+						"default":     "INBOX",
+					},
+				},
+				"required": []string{"query"},
 			},
 		},
 		{
@@ -144,6 +173,26 @@ func toolsList() []tool {
 				"required": []string{"to", "subject", "body"},
 			},
 		},
+		{
+			Name:        "delete_emails",
+			Description: "Move emails to DELETED_BY_MCP (does not permanently delete).",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"uids": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "integer"},
+						"description": "List of email UIDs to move.",
+					},
+					"mailbox": map[string]interface{}{
+						"type":        "string",
+						"description": "Mailbox name (default INBOX).",
+						"default":     "INBOX",
+					},
+				},
+				"required": []string{"uids"},
+			},
+		},
 	}
 }
 
@@ -156,8 +205,12 @@ func handleToolCall(raw json.RawMessage) (toolResult, error) {
 	switch params.Name {
 	case "list_emails":
 		return handleListEmails(params.Arguments)
+	case "search_emails":
+		return handleSearchEmails(params.Arguments)
 	case "send_email":
 		return handleSendEmail(params.Arguments)
+	case "delete_emails":
+		return handleDeleteEmails(params.Arguments)
 	default:
 		return toolResult{}, fmt.Errorf("unknown tool: %s", params.Name)
 	}
@@ -176,6 +229,13 @@ func handleListEmails(args map[string]interface{}) (toolResult, error) {
 		}
 	}
 
+	all := false
+	if raw, ok := args["all"]; ok {
+		if val, ok := raw.(bool); ok {
+			all = val
+		}
+	}
+
 	mailbox := "INBOX"
 	if raw, ok := args["mailbox"]; ok {
 		if val, ok := raw.(string); ok && val != "" {
@@ -183,7 +243,57 @@ func handleListEmails(args map[string]interface{}) (toolResult, error) {
 		}
 	}
 
-	results, err := fetch.Recent(n, fetch.Config{
+	cfg := fetch.Config{
+		Server:   configMap["SERVER"],
+		Username: configMap["USERNAME"],
+		Password: configMap["PASSWORD"],
+		Mailbox:  mailbox,
+	}
+
+	var results []fetch.Email
+	if all {
+		results, err = fetch.ListAll(cfg)
+	} else {
+		results, err = fetch.Recent(n, cfg)
+	}
+	if err != nil {
+		return toolResult{}, err
+	}
+
+	payload, err := json.Marshal(results)
+	if err != nil {
+		return toolResult{}, err
+	}
+
+	return toolResult{Content: []map[string]string{{"type": "text", "text": string(payload)}}}, nil
+}
+
+func handleSearchEmails(args map[string]interface{}) (toolResult, error) {
+	configMap, err := config.Load(".env")
+	if err != nil {
+		return toolResult{}, err
+	}
+
+	query, _ := args["query"].(string)
+	if query == "" {
+		return toolResult{}, fmt.Errorf("query is required")
+	}
+
+	limit := 50
+	if raw, ok := args["limit"]; ok {
+		if val, ok := raw.(float64); ok {
+			limit = int(val)
+		}
+	}
+
+	mailbox := "INBOX"
+	if raw, ok := args["mailbox"]; ok {
+		if val, ok := raw.(string); ok && val != "" {
+			mailbox = val
+		}
+	}
+
+	results, err := fetch.Search(query, limit, fetch.Config{
 		Server:   configMap["SERVER"],
 		Username: configMap["USERNAME"],
 		Password: configMap["PASSWORD"],
@@ -227,6 +337,52 @@ func handleSendEmail(args map[string]interface{}) (toolResult, error) {
 	}
 
 	return toolResult{Content: []map[string]string{{"type": "text", "text": "sent"}}}, nil
+}
+
+func handleDeleteEmails(args map[string]interface{}) (toolResult, error) {
+	configMap, err := config.Load(".env")
+	if err != nil {
+		return toolResult{}, err
+	}
+
+	rawUids, ok := args["uids"].([]interface{})
+	if !ok || len(rawUids) == 0 {
+		return toolResult{}, fmt.Errorf("uids is required")
+	}
+
+	uids := make([]uint32, 0, len(rawUids))
+	for _, raw := range rawUids {
+		if val, ok := raw.(float64); ok && val > 0 {
+			uids = append(uids, uint32(val))
+		}
+	}
+	if len(uids) == 0 {
+		return toolResult{}, fmt.Errorf("no valid uids provided")
+	}
+
+	mailbox := "INBOX"
+	if raw, ok := args["mailbox"]; ok {
+		if val, ok := raw.(string); ok && val != "" {
+			mailbox = val
+		}
+	}
+
+	moved, err := fetch.MoveToMailbox(uids, "DELETED_BY_MCP", fetch.Config{
+		Server:   configMap["SERVER"],
+		Username: configMap["USERNAME"],
+		Password: configMap["PASSWORD"],
+		Mailbox:  mailbox,
+	})
+	if err != nil {
+		return toolResult{}, err
+	}
+
+	payload, err := json.Marshal(map[string]interface{}{"moved": moved})
+	if err != nil {
+		return toolResult{}, err
+	}
+
+	return toolResult{Content: []map[string]string{{"type": "text", "text": string(payload)}}}, nil
 }
 
 func writeResponse(writer *bufio.Writer, resp rpcResponse) {
