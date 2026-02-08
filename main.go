@@ -1,131 +1,68 @@
 package main
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 
-	"github.com/emersion/go-imap"
-	"github.com/emersion/go-imap/client"
+	"ai-over-email/fetch"
+	"ai-over-email/send"
 )
-
-type emailItem struct {
-	UID          uint32    `json:"uid"`
-	InternalDate time.Time `json:"internal_date"`
-	From         string    `json:"from"`
-	Subject      string    `json:"subject"`
-	Body         string    `json:"body"`
-}
 
 func main() {
 	var (
-		n     = flag.Int("n", 10, "number of most recent emails to return")
-		env   = flag.String("env", ".env", "path to env file")
-		mbox  = flag.String("mailbox", "INBOX", "mailbox to read")
-		quiet = flag.Bool("quiet", false, "suppress non-JSON output")
+		n        = flag.Int("n", 10, "number of most recent emails to return")
+		env      = flag.String("env", ".env", "path to env file")
+		mbox     = flag.String("mailbox", "INBOX", "mailbox to read")
+		sendMode = flag.Bool("send", false, "send an email instead of fetching")
+		to       = flag.String("to", "", "recipient email address")
+		subject  = flag.String("subject", "", "email subject")
+		body     = flag.String("body", "", "email body")
+		quiet    = flag.Bool("quiet", false, "suppress non-JSON output")
 	)
 	flag.Parse()
-
-	if *n <= 0 {
-		exitErr("-n must be positive", *quiet)
-	}
 
 	config, err := loadConfig(*env)
 	if err != nil {
 		exitErr(err.Error(), *quiet)
 	}
 
-	server := config["SERVER"]
-	username := config["USERNAME"]
-	password := config["PASSWORD"]
-
-	if server == "" || username == "" || password == "" {
-		exitErr("SERVER, USERNAME, and PASSWORD must be set in .env or environment", *quiet)
-	}
-
-	addr := server
-	if !strings.Contains(server, ":") {
-		addr = server + ":993"
-	}
-
-	c, err := client.DialTLS(addr, &tls.Config{ServerName: server})
-	if err != nil {
-		exitErr(fmt.Sprintf("failed to connect: %v", err), *quiet)
-	}
-	defer c.Logout()
-
-	if err := c.Login(username, password); err != nil {
-		exitErr(fmt.Sprintf("login failed: %v", err), *quiet)
-	}
-
-	mboxStatus, err := c.Select(*mbox, true)
-	if err != nil {
-		exitErr(fmt.Sprintf("select mailbox failed: %v", err), *quiet)
-	}
-
-	if mboxStatus.Messages == 0 {
-		writeJSON([]emailItem{})
+	if *sendMode {
+		if *to == "" || *subject == "" || *body == "" {
+			exitErr("-to, -subject, and -body are required in send mode", *quiet)
+		}
+		sendCfg := send.Config{
+			Server:   configValue(config, "SMTP_SERVER", "smtp.gmail.com"),
+			Port:     configValue(config, "SMTP_PORT", "587"),
+			Username: config["USERNAME"],
+			Password: config["PASSWORD"],
+			From:     configValue(config, "FROM_EMAIL", ""),
+		}
+		if err := send.Send(*to, *subject, *body, sendCfg); err != nil {
+			exitErr(fmt.Sprintf("send failed: %v", err), *quiet)
+		}
 		return
 	}
 
-	start := uint32(1)
-	if uint32(*n) < mboxStatus.Messages {
-		start = mboxStatus.Messages - uint32(*n) + 1
+	if *n <= 0 {
+		exitErr("-n must be positive", *quiet)
 	}
 
-	seqset := new(imap.SeqSet)
-	seqset.AddRange(start, mboxStatus.Messages)
-
-	bodySection := &imap.BodySectionName{Specifier: imap.TextSpecifier}
-	items := []imap.FetchItem{
-		imap.FetchEnvelope,
-		imap.FetchInternalDate,
-		imap.FetchUid,
-		bodySection.FetchItem(),
-	}
-	messages := make(chan *imap.Message, *n)
-	if err := c.Fetch(seqset, items, messages); err != nil {
-		exitErr(fmt.Sprintf("fetch failed: %v", err), *quiet)
+	fetchCfg := fetch.Config{
+		Server:   config["SERVER"],
+		Username: config["USERNAME"],
+		Password: config["PASSWORD"],
+		Mailbox:  *mbox,
 	}
 
-	results := make([]emailItem, 0, *n)
-	for msg := range messages {
-		if msg == nil || msg.Envelope == nil {
-			continue
-		}
-		from := formatAddressList(msg.Envelope.From)
-		body := ""
-		if r := msg.GetBody(bodySection); r != nil {
-			if data, err := io.ReadAll(r); err == nil {
-				body = strings.TrimSpace(string(data))
-			}
-		}
-
-		results = append(results, emailItem{
-			UID:          msg.Uid,
-			InternalDate: msg.InternalDate,
-			From:         from,
-			Subject:      msg.Envelope.Subject,
-			Body:         body,
-		})
+	results, err := fetch.Recent(*n, fetchCfg)
+	if err != nil {
+		exitErr(err.Error(), *quiet)
 	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].InternalDate.After(results[j].InternalDate)
-	})
-
-	if len(results) > *n {
-		results = results[:*n]
-	}
-
 	writeJSON(results)
 }
 
@@ -180,27 +117,6 @@ func parseEnv(content string) map[string]string {
 	return result
 }
 
-func formatAddressList(list []*imap.Address) string {
-	parts := make([]string, 0, len(list))
-	for _, addr := range list {
-		if addr == nil {
-			continue
-		}
-		mailbox := addr.MailboxName
-		host := addr.HostName
-		full := mailbox
-		if host != "" {
-			full = mailbox + "@" + host
-		}
-		if addr.PersonalName != "" {
-			parts = append(parts, fmt.Sprintf("%s <%s>", addr.PersonalName, full))
-		} else {
-			parts = append(parts, full)
-		}
-	}
-	return strings.Join(parts, ", ")
-}
-
 func writeJSON(payload interface{}) {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
@@ -212,4 +128,11 @@ func exitErr(msg string, quiet bool) {
 		fmt.Fprintln(os.Stderr, msg)
 	}
 	os.Exit(1)
+}
+
+func configValue(config map[string]string, key, fallback string) string {
+	if val := config[key]; val != "" {
+		return val
+	}
+	return fallback
 }
