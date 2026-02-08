@@ -71,7 +71,9 @@ func Recent(n int, cfg Config) ([]Email, error) {
 	seqset := new(imap.SeqSet)
 	seqset.AddRange(start, mboxStatus.Messages)
 
-	bodySection := &imap.BodySectionName{Specifier: imap.TextSpecifier}
+	bodySection := &imap.BodySectionName{
+		BodyPartName: imap.BodyPartName{Specifier: imap.TextSpecifier},
+	}
 	items := []imap.FetchItem{
 		imap.FetchEnvelope,
 		imap.FetchInternalDate,
