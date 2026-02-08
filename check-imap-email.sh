@@ -8,7 +8,7 @@ account = IMAP {
 }
 
 inbox = account['INBOX']
-uids = inbox:is_unseen()
+uids = inbox:select_all()
 
 local function expand_uids(set)
   local list = {}
@@ -31,7 +31,16 @@ local function expand_uids(set)
   return list
 end
 
-for _, uid in ipairs(expand_uids(uids)) do
+local all_uids = expand_uids(uids)
+table.sort(all_uids)
+
+local start_index = 1
+if #all_uids > 50 then
+  start_index = #all_uids - 49
+end
+
+for i = start_index, #all_uids do
+  local uid = all_uids[i]
   local msg = inbox[uid]
   local date    = msg:fetch_field('date') or ''
   local from    = msg:fetch_field('from') or ''
