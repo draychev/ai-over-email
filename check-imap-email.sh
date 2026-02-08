@@ -1,5 +1,8 @@
 #!/bin/bash
 imapfilter -c /dev/stdin <<'EOF'
+options = options or {}
+options.info = false
+
 account = IMAP {
   server   = 'imap.gmail.com',
   username = 'delyanr@gmail.com',
@@ -17,9 +20,13 @@ local function expand_uids(set)
   end
   for _, entry in ipairs(set) do
     if type(entry) == 'table' then
-      local start_uid = entry[1]
-      local end_uid = entry[2] or entry[1]
-      if type(start_uid) == 'number' and type(end_uid) == 'number' then
+      local first = entry[1]
+      local second = entry[2]
+      if type(second) == 'number' and type(first) == 'table' then
+        table.insert(list, second)
+      elseif type(first) == 'number' then
+        local start_uid = first
+        local end_uid = type(second) == 'number' and second or first
         for i = start_uid, end_uid do
           table.insert(list, i)
         end
@@ -34,12 +41,13 @@ end
 local all_uids = expand_uids(uids)
 table.sort(all_uids)
 
-local start_index = 1
-if #all_uids > 50 then
-  start_index = #all_uids - 49
+local total = #all_uids
+local count = total
+if count > 50 then
+  count = 50
 end
 
-for i = start_index, #all_uids do
+for i = total, total - count + 1, -1 do
   local uid = all_uids[i]
   local msg = inbox[uid]
   local date    = msg:fetch_field('date') or ''
