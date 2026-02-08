@@ -86,7 +86,7 @@ func loadConfig(envPath string) (map[string]string, error) {
 		}
 	}
 
-	for _, key := range []string{"SERVER", "USERNAME", "PASSWORD", "SSL"} {
+	for _, key := range []string{"SERVER", "USERNAME", "PASSWORD", "SSL", "SMTP_SERVER", "SMTP_PORT", "FROM_EMAIL"} {
 		if val := os.Getenv(key); val != "" {
 			config[key] = val
 		}
