@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +22,7 @@ type emailItem struct {
 	InternalDate time.Time `json:"internal_date"`
 	From         string    `json:"from"`
 	Subject      string    `json:"subject"`
+	Body         string    `json:"body"`
 }
 
 func main() {
@@ -82,7 +84,13 @@ func main() {
 	seqset := new(imap.SeqSet)
 	seqset.AddRange(start, mboxStatus.Messages)
 
-	items := []imap.FetchItem{imap.FetchEnvelope, imap.FetchInternalDate, imap.FetchUid}
+	bodySection := &imap.BodySectionName{Specifier: imap.TextSpecifier}
+	items := []imap.FetchItem{
+		imap.FetchEnvelope,
+		imap.FetchInternalDate,
+		imap.FetchUid,
+		bodySection.FetchItem(),
+	}
 	messages := make(chan *imap.Message, *n)
 	if err := c.Fetch(seqset, items, messages); err != nil {
 		exitErr(fmt.Sprintf("fetch failed: %v", err), *quiet)
@@ -94,11 +102,19 @@ func main() {
 			continue
 		}
 		from := formatAddressList(msg.Envelope.From)
+		body := ""
+		if r := msg.GetBody(bodySection); r != nil {
+			if data, err := io.ReadAll(r); err == nil {
+				body = strings.TrimSpace(string(data))
+			}
+		}
+
 		results = append(results, emailItem{
 			UID:          msg.Uid,
 			InternalDate: msg.InternalDate,
 			From:         from,
 			Subject:      msg.Envelope.Subject,
+			Body:         body,
 		})
 	}
 
