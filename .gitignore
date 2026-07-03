@@ -1,3 +1,6 @@
 .env
 mcp.log
 package-lock.json
+creds.txt
+creds.txt~
+.tmp/

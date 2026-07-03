@@ -1,0 +1,18 @@
+[Unit]
+Description=AI over email Fastmail responder
+Documentation=file:/home/de/src/ai-over-email/EmailSettings.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/de/src/ai-over-email
+Environment=PATH=/home/de/.local/bin:/home/de/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+ExecStart=/usr/bin/make run
+Restart=always
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
