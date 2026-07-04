@@ -167,14 +167,19 @@ func TestReplyQuoteDateFallsBackToReceivedAt(t *testing.T) {
 func TestAppendResponseFooterText(t *testing.T) {
 	got := appendResponseFooterText("Answer.", emailFooterStats{
 		TokensUsed:        123,
+		TotalTokensEver:   456,
 		TotalEmailsEver:   45,
+		Model:             "gpt-test",
+		ToolsUsed:         []string{"web_search"},
 		RemainingToday:    6,
 		DailyMessageLimit: 10,
 	})
 
 	for _, want := range []string{
 		"Answer.\n\n---\n",
+		"Model: gpt-test | Tools used: web_search |",
 		"Tokens used for this email: 123",
+		"Total tokens used by this email account: 456",
 		"Total emails sent by this service: 45",
 		"Messages remaining today: 6 of 10",
 	} {
@@ -182,19 +187,27 @@ func TestAppendResponseFooterText(t *testing.T) {
 			t.Fatalf("footer text missing %q in %q", want, got)
 		}
 	}
+	if strings.Contains(responseFooterText(emailFooterStats{TokensUsed: 1}), "\n") {
+		t.Fatalf("footer text should be a single line")
+	}
 }
 
 func TestAppendResponseFooterHTML(t *testing.T) {
 	got := appendResponseFooterHTML("<p>Answer.</p>", emailFooterStats{
 		TokensUsed:        123,
+		TotalTokensEver:   456,
 		TotalEmailsEver:   45,
+		Model:             "gpt-test",
+		ToolsUsed:         []string{"web_search"},
 		RemainingToday:    6,
 		DailyMessageLimit: 10,
 	})
 
 	for _, want := range []string{
 		"<p>Answer.</p>\n<hr>",
+		"Model: gpt-test | Tools used: web_search |",
 		"Tokens used for this email: 123",
+		"Total tokens used by this email account: 456",
 		"Total emails sent by this service: 45",
 		"Messages remaining today: 6 of 10",
 	} {

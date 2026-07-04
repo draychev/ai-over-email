@@ -627,9 +627,6 @@ func (w *Watcher) maybeAutoReply(ctx context.Context, msg emailMessage) error {
 		}
 		return w.deleteEmail(ctx, full.ID)
 	}
-	if strings.TrimSpace(body) == "" {
-		body = full.Subject
-	}
 	if err := w.updateCorrespondentProfiles(ctx, full, body); err != nil {
 		return err
 	}
@@ -643,6 +640,8 @@ func (w *Watcher) maybeAutoReply(ctx context.Context, msg emailMessage) error {
 
 	if err := w.sendReply(ctx, full, reply.Text, body, attachments, emailFooterStats{
 		TokensUsed:        reply.Usage.TotalTokens,
+		Model:             reply.Model,
+		ToolsUsed:         reply.ToolsUsed,
 		RemainingToday:    usage.remaining(),
 		DailyMessageLimit: dailyMessageLimit,
 	}); err != nil {
@@ -826,6 +825,11 @@ func (w *Watcher) sendReply(ctx context.Context, original emailMessage, body str
 
 func (w *Watcher) sendEmail(ctx context.Context, to []emailAddress, subject string, textBody string, htmlBody string, attachments []map[string]any, original emailMessage, footer emailFooterStats) error {
 	if w.store != nil {
+		totalTokens, err := w.store.RecordAccountTokenUsage(ctx, footer.TokensUsed)
+		if err != nil {
+			return err
+		}
+		footer.TotalTokensEver = totalTokens
 		total, err := w.store.NextOutboundEmailTotal(ctx)
 		if err != nil {
 			return err

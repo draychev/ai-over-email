@@ -147,6 +147,26 @@ func TestCorrespondentStoreCountsOutboundEmails(t *testing.T) {
 	}
 }
 
+func TestCorrespondentStoreRecordsAccountTokenUsage(t *testing.T) {
+	ctx := context.Background()
+	store := openTestCorrespondentStore(t)
+
+	first, err := store.RecordAccountTokenUsage(ctx, 123)
+	if err != nil {
+		t.Fatalf("first RecordAccountTokenUsage returned error: %v", err)
+	}
+	second, err := store.RecordAccountTokenUsage(ctx, 7)
+	if err != nil {
+		t.Fatalf("second RecordAccountTokenUsage returned error: %v", err)
+	}
+	if first != 123 || second != 130 {
+		t.Fatalf("token totals = %d, %d; want 123, 130", first, second)
+	}
+	if _, err := store.RecordAccountTokenUsage(ctx, -1); err == nil {
+		t.Fatalf("negative token usage returned nil error")
+	}
+}
+
 func TestExtractCorrespondentProfileUpdateUTCOffset(t *testing.T) {
 	update := extractCorrespondentProfileUpdate("zip 94105, timezone UTC-7")
 

@@ -14,7 +14,10 @@ import (
 
 type emailFooterStats struct {
 	TokensUsed        int
+	TotalTokensEver   int64
 	TotalEmailsEver   int64
+	Model             string
+	ToolsUsed         []string
 	RemainingToday    int
 	DailyMessageLimit int
 }
@@ -165,7 +168,21 @@ func responseFooterText(stats emailFooterStats) string {
 	if limit <= 0 {
 		limit = dailyMessageLimit
 	}
-	return "Tokens used for this email: " + strconv.Itoa(stats.TokensUsed) + "\n" +
-		"Total emails sent by this service: " + strconv.FormatInt(stats.TotalEmailsEver, 10) + "\n" +
-		"Messages remaining today: " + strconv.Itoa(remaining) + " of " + strconv.Itoa(limit)
+	model := strings.TrimSpace(stats.Model)
+	if model == "" {
+		model = "unknown"
+	}
+	tools := strings.Join(stats.ToolsUsed, ", ")
+	if strings.TrimSpace(tools) == "" {
+		tools = "none"
+	}
+	parts := []string{
+		"Model: " + model,
+		"Tools used: " + tools,
+		"Tokens used for this email: " + strconv.Itoa(stats.TokensUsed),
+		"Total tokens used by this email account: " + strconv.FormatInt(stats.TotalTokensEver, 10),
+		"Total emails sent by this service: " + strconv.FormatInt(stats.TotalEmailsEver, 10),
+		"Messages remaining today: " + strconv.Itoa(remaining) + " of " + strconv.Itoa(limit),
+	}
+	return strings.Join(parts, " | ")
 }

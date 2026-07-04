@@ -48,6 +48,35 @@ func TestOpenAIResponseFunctionCalls(t *testing.T) {
 	}
 }
 
+func TestOpenAIResponseToolsUsed(t *testing.T) {
+	response := openAIResponse{
+		Output: []openAIOutputItem{
+			{Type: "function_call", Name: "web_search", CallID: "call_1"},
+			{Type: "web_search_call"},
+			{Type: "function_call", Name: "web_search", CallID: "call_2"},
+		},
+	}
+
+	got := response.toolsUsed()
+	if len(got) != 1 || got[0] != "web_search" {
+		t.Fatalf("toolsUsed = %#v, want web_search once", got)
+	}
+}
+
+func TestOpenAIUserContentTreatsSubjectAsContextOnly(t *testing.T) {
+	content := openAIUserContent("Status request", "", nil)
+
+	text, _ := content[0]["text"].(string)
+	for _, want := range []string{"subject for context only", "Do not copy or restate the subject line"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("user content missing %q: %q", want, text)
+		}
+	}
+	if !strings.Contains(text, "Incoming email body:\n\n") {
+		t.Fatalf("empty body was not kept separate from subject: %q", text)
+	}
+}
+
 func TestOpenAIToolsUseHostedSearchWithoutBraveToken(t *testing.T) {
 	client := &openAIClient{}
 

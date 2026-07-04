@@ -34,8 +34,10 @@ type openAIResponse struct {
 }
 
 type openAIAnswer struct {
-	Text  string
-	Usage openAIUsage
+	Text      string
+	Model     string
+	ToolsUsed []string
+	Usage     openAIUsage
 }
 
 type openAIUsage struct {
@@ -142,6 +144,7 @@ Email structure:
 		return openAIAnswer{}, err
 	}
 	usage := decoded.Usage
+	toolsUsed := decoded.toolsUsed()
 	if c.braveSearchToken != "" {
 		const maxBraveSearchRounds = 4
 		for i := 0; i < maxBraveSearchRounds; i++ {
@@ -165,6 +168,7 @@ Email structure:
 				return openAIAnswer{}, err
 			}
 			usage = usage.add(decoded.Usage)
+			toolsUsed = appendToolsUsed(toolsUsed, decoded.toolsUsed()...)
 		}
 	}
 
@@ -172,7 +176,7 @@ Email structure:
 	if text == "" {
 		return openAIAnswer{}, fmt.Errorf("OpenAI response did not include output_text")
 	}
-	return openAIAnswer{Text: text, Usage: usage}, nil
+	return openAIAnswer{Text: text, Model: defaultOpenAIModel, ToolsUsed: toolsUsed, Usage: usage}, nil
 }
 
 func (u openAIUsage) add(other openAIUsage) openAIUsage {
@@ -368,7 +372,7 @@ func (c *openAIClient) braveSearch(ctx context.Context, query string, count int)
 func openAIUserContent(subject string, body string, attachments []emailAttachment) []map[string]any {
 	content := []map[string]any{{
 		"type": "input_text",
-		"text": fmt.Sprintf("Incoming email subject: %s\n\nIncoming email body:\n%s\n\nAttachments: %s\n\nWrite the outgoing email reply now.", subject, body, attachmentSummary(attachments)),
+		"text": fmt.Sprintf("Incoming email subject for context only: %s\n\nIncoming email body:\n%s\n\nAttachments: %s\n\nWrite the outgoing email reply now. Do not copy or restate the subject line in the reply body unless the sender explicitly asks about the subject text.", subject, body, attachmentSummary(attachments)),
 	}}
 	for i, attachment := range attachments {
 		name := attachmentName(attachment)
@@ -439,6 +443,38 @@ func (r openAIResponse) functionCalls() []openAIOutputItem {
 		}
 	}
 	return calls
+}
+
+func (r openAIResponse) toolsUsed() []string {
+	var tools []string
+	for _, item := range r.Output {
+		switch item.Type {
+		case "function_call":
+			if item.Name != "" {
+				tools = appendToolsUsed(tools, item.Name)
+			}
+		case "web_search_call":
+			tools = appendToolsUsed(tools, "web_search")
+		}
+	}
+	return tools
+}
+
+func appendToolsUsed(existing []string, names ...string) []string {
+	seen := make(map[string]struct{}, len(existing)+len(names))
+	result := make([]string, 0, len(existing)+len(names))
+	for _, name := range append(existing, names...) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		result = append(result, name)
+	}
+	return result
 }
 
 func formatBraveSearchResults(query string, results []braveSearchResult) string {

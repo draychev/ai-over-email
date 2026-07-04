@@ -104,6 +104,11 @@ func (s *correspondentStore) migrate(ctx context.Context) error {
 			total_sent INTEGER NOT NULL DEFAULT 0,
 			updated_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS account_token_totals (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			total_tokens INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL
+		)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -134,6 +139,38 @@ func (s *correspondentStore) NextOutboundEmailTotal(ctx context.Context) (int64,
 	}
 	var total int64
 	if err := tx.QueryRowContext(ctx, `SELECT total_sent FROM outbound_email_totals WHERE id = 1`).Scan(&total); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func (s *correspondentStore) RecordAccountTokenUsage(ctx context.Context, tokens int) (int64, error) {
+	if tokens < 0 {
+		return 0, fmt.Errorf("token usage must be non-negative")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `INSERT INTO account_token_totals (id, total_tokens, updated_at)
+		VALUES (1, 0, ?)
+		ON CONFLICT(id) DO NOTHING`, now); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE account_token_totals
+		SET total_tokens = total_tokens + ?,
+			updated_at = ?
+		WHERE id = 1`, tokens, now); err != nil {
+		return 0, err
+	}
+	var total int64
+	if err := tx.QueryRowContext(ctx, `SELECT total_tokens FROM account_token_totals WHERE id = 1`).Scan(&total); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
