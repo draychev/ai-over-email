@@ -4,3 +4,4 @@ package-lock.json
 creds.txt
 creds.txt~
 .tmp/
+.idea/
