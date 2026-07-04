@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	appconfig "ai-over-email/pkg/config"
 )
 
 const (
@@ -87,29 +89,29 @@ func newJMAPClient(creds Credentials, logOutput io.Writer) *jmapClient {
 	}
 }
 
-func (c *jmapClient) FetchSession(ctx context.Context, settings Settings) error {
+func (c *jmapClient) FetchSession(ctx context.Context, config appconfig.ConfigStruct) error {
 	var attempts []string
 
 	if c.creds.Token != "" {
 		c.auth = authBearer
-		c.logf("attempting JMAP session with bearer token: endpoint=%s", settings.JMAPSessionEndpoint)
-		if err := c.fetchSessionAt(ctx, settings.JMAPSessionEndpoint); err == nil {
-			c.logSession(settings.JMAPSessionEndpoint)
+		c.logf("attempting JMAP session with bearer token: endpoint=%s", config.JMAP.SessionEndpoint)
+		if err := c.fetchSessionAt(ctx, config.JMAP.SessionEndpoint); err == nil {
+			c.logSession(config.JMAP.SessionEndpoint)
 			return nil
 		} else {
-			c.logf("bearer JMAP session attempt failed: endpoint=%s err=%v", settings.JMAPSessionEndpoint, err)
+			c.logf("bearer JMAP session attempt failed: endpoint=%s err=%v", config.JMAP.SessionEndpoint, err)
 			attempts = append(attempts, err.Error())
 		}
 	}
 
 	if c.creds.Username != "" && c.creds.Password != "" {
 		c.auth = authBasic
-		c.logf("attempting JMAP session with Basic auth: endpoint=%s username_present=%t", settings.JMAPLegacySessionEndpoint, c.creds.Username != "")
-		if err := c.fetchSessionAt(ctx, settings.JMAPLegacySessionEndpoint); err == nil {
-			c.logSession(settings.JMAPLegacySessionEndpoint)
+		c.logf("attempting JMAP session with Basic auth: endpoint=%s username_present=%t", config.JMAP.LegacyBasicAuthSessionEndpoint, c.creds.Username != "")
+		if err := c.fetchSessionAt(ctx, config.JMAP.LegacyBasicAuthSessionEndpoint); err == nil {
+			c.logSession(config.JMAP.LegacyBasicAuthSessionEndpoint)
 			return nil
 		} else {
-			c.logf("Basic auth JMAP session attempt failed: endpoint=%s err=%v", settings.JMAPLegacySessionEndpoint, err)
+			c.logf("Basic auth JMAP session attempt failed: endpoint=%s err=%v", config.JMAP.LegacyBasicAuthSessionEndpoint, err)
 			attempts = append(attempts, err.Error())
 		}
 	}

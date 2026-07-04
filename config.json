@@ -1,0 +1,6 @@
+{
+  "jmap": {
+    "session_endpoint": "https://api.fastmail.com/jmap/session",
+    "legacy_basic_auth_session_endpoint": "https://jmap.fastmail.com/.well-known/jmap"
+  }
+}

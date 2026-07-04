@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	appconfig "ai-over-email/pkg/config"
 )
 
 const listPageSize = 100
@@ -14,7 +16,7 @@ const listPageSize = 100
 type Lister struct {
 	config   Config
 	creds    Credentials
-	settings Settings
+	appConfig appconfig.ConfigStruct
 	client   *jmapClient
 
 	accountID string
@@ -39,24 +41,24 @@ func NewLister(config Config) (*Lister, error) {
 	}
 	logf(config.LogOutput, "credentials loaded: username_present=%t token_present=%t password_present=%t openai_token_present=%t brave_search_token_present=%t mailbox=%q", creds.Username != "", creds.Token != "", creds.Password != "", creds.OpenAIAPIToken != "", creds.BraveSearchAPIToken != "", creds.Mailbox)
 
-	logf(config.LogOutput, "loading email settings from %s", config.SettingsPath)
-	settings, err := LoadSettings(config.SettingsPath)
+	logf(config.LogOutput, "loading application config from %s", config.ConfigPath)
+	appConfig, err := appconfig.Load(config.ConfigPath)
 	if err != nil {
 		return nil, err
 	}
-	logf(config.LogOutput, "settings loaded: jmap_session_endpoint=%s legacy_basic_endpoint=%s", settings.JMAPSessionEndpoint, settings.JMAPLegacySessionEndpoint)
+	logf(config.LogOutput, "application config loaded: jmap_session_endpoint=%s legacy_basic_endpoint=%s", appConfig.JMAP.SessionEndpoint, appConfig.JMAP.LegacyBasicAuthSessionEndpoint)
 
 	return &Lister{
-		config:   config,
-		creds:    creds,
-		settings: settings,
-		client:   newJMAPClient(creds, config.LogOutput),
+		config:    config,
+		creds:     creds,
+		appConfig: appConfig,
+		client:    newJMAPClient(creds, config.LogOutput),
 	}, nil
 }
 
 func (l *Lister) List(ctx context.Context) error {
 	l.logf("starting JMAP mailbox listing")
-	if err := l.client.FetchSession(ctx, l.settings); err != nil {
+	if err := l.client.FetchSession(ctx, l.appConfig); err != nil {
 		return err
 	}
 
@@ -168,8 +170,8 @@ func normalizeConfig(config Config) Config {
 	if config.CredentialsPath == "" {
 		config.CredentialsPath = "creds.txt"
 	}
-	if config.SettingsPath == "" {
-		config.SettingsPath = "EmailSettings.md"
+	if config.ConfigPath == "" {
+		config.ConfigPath = "config.json"
 	}
 	if config.DatabasePath == "" {
 		config.DatabasePath = filepath.Join(".tmp", "correspondents.sqlite3")

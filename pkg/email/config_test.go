@@ -75,22 +75,6 @@ func TestLoadCredentialsBraveSearchAPIToken(t *testing.T) {
 	}
 }
 
-func TestLoadSettingsJMAPEndpoints(t *testing.T) {
-	path := writeTempFile(t, "| Setting | Value | Notes |\n| --- | --- | --- |\n| JMAP session endpoint | `https://api.example/session` | current |\n| JMAP legacy Basic auth session endpoint | `https://legacy.example/jmap` | legacy |\n")
-
-	settings, err := LoadSettings(path)
-	if err != nil {
-		t.Fatalf("LoadSettings returned error: %v", err)
-	}
-
-	if settings.JMAPSessionEndpoint != "https://api.example/session" {
-		t.Fatalf("JMAPSessionEndpoint = %q", settings.JMAPSessionEndpoint)
-	}
-	if settings.JMAPLegacySessionEndpoint != "https://legacy.example/jmap" {
-		t.Fatalf("JMAPLegacySessionEndpoint = %q", settings.JMAPLegacySessionEndpoint)
-	}
-}
-
 func writeTempFile(t *testing.T, content string) string {
 	t.Helper()
 

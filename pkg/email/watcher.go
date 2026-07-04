@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	appconfig "ai-over-email/pkg/config"
 )
 
 const (
@@ -20,7 +22,7 @@ const (
 
 type Config struct {
 	CredentialsPath string
-	SettingsPath    string
+	ConfigPath      string
 	DatabasePath    string
 	Output          io.Writer
 	LogOutput       io.Writer
@@ -29,7 +31,7 @@ type Config struct {
 type Watcher struct {
 	config   Config
 	creds    Credentials
-	settings Settings
+	appConfig appconfig.ConfigStruct
 	client   *jmapClient
 	openai   *openAIClient
 	store    *correspondentStore
@@ -143,12 +145,12 @@ func NewWatcher(config Config) (*Watcher, error) {
 	}
 	logf(config.LogOutput, "credentials loaded: username_present=%t token_present=%t password_present=%t openai_token_present=%t brave_search_token_present=%t mailbox=%q", creds.Username != "", creds.Token != "", creds.Password != "", creds.OpenAIAPIToken != "", creds.BraveSearchAPIToken != "", creds.Mailbox)
 
-	logf(config.LogOutput, "loading email settings from %s", config.SettingsPath)
-	settings, err := LoadSettings(config.SettingsPath)
+	logf(config.LogOutput, "loading application config from %s", config.ConfigPath)
+	appConfig, err := appconfig.Load(config.ConfigPath)
 	if err != nil {
 		return nil, err
 	}
-	logf(config.LogOutput, "settings loaded: jmap_session_endpoint=%s legacy_basic_endpoint=%s", settings.JMAPSessionEndpoint, settings.JMAPLegacySessionEndpoint)
+	logf(config.LogOutput, "application config loaded: jmap_session_endpoint=%s legacy_basic_endpoint=%s", appConfig.JMAP.SessionEndpoint, appConfig.JMAP.LegacyBasicAuthSessionEndpoint)
 
 	store, err := openCorrespondentStore(config.DatabasePath)
 	if err != nil {
@@ -157,19 +159,19 @@ func NewWatcher(config Config) (*Watcher, error) {
 	logf(config.LogOutput, "correspondent database opened: path=%s", config.DatabasePath)
 
 	return &Watcher{
-		config:   config,
-		creds:    creds,
-		settings: settings,
-		client:   newJMAPClient(creds, config.LogOutput),
-		openai:   newOpenAIClient(creds.OpenAIAPIToken, creds.PublicEmail, creds.BraveSearchAPIToken, config.LogOutput),
-		store:    store,
-		seen:     make(map[string]struct{}),
+		config:    config,
+		creds:     creds,
+		appConfig: appConfig,
+		client:    newJMAPClient(creds, config.LogOutput),
+		openai:    newOpenAIClient(creds.OpenAIAPIToken, creds.PublicEmail, creds.BraveSearchAPIToken, config.LogOutput),
+		store:     store,
+		seen:      make(map[string]struct{}),
 	}, nil
 }
 
 func (w *Watcher) Run(ctx context.Context) error {
 	w.logf("starting JMAP mailbox watcher")
-	if err := w.client.FetchSession(ctx, w.settings); err != nil {
+	if err := w.client.FetchSession(ctx, w.appConfig); err != nil {
 		return err
 	}
 

@@ -5,13 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
-)
-
-const (
-	defaultSessionEndpoint = "https://api.fastmail.com/jmap/session"
-	legacySessionEndpoint  = "https://jmap.fastmail.com/.well-known/jmap"
 )
 
 type Credentials struct {
@@ -23,11 +17,6 @@ type Credentials struct {
 	Mailbox             string
 	PublicEmail         string
 	PlaintextAllowlist  []string
-}
-
-type Settings struct {
-	JMAPSessionEndpoint       string
-	JMAPLegacySessionEndpoint string
 }
 
 func LoadCredentials(path string) (Credentials, error) {
@@ -90,26 +79,6 @@ func looksLikeFastmailAPIToken(value string) bool {
 	return strings.HasPrefix(value, "fmu"+"1-") || strings.HasPrefix(value, "fmu"+"2-")
 }
 
-func LoadSettings(path string) (Settings, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Settings{}, fmt.Errorf("read settings: %w", err)
-	}
-
-	settings := Settings{
-		JMAPSessionEndpoint:       findMarkdownSetting(string(data), "JMAP session endpoint"),
-		JMAPLegacySessionEndpoint: findMarkdownSetting(string(data), "JMAP legacy Basic auth session endpoint"),
-	}
-	if settings.JMAPSessionEndpoint == "" {
-		settings.JMAPSessionEndpoint = defaultSessionEndpoint
-	}
-	if settings.JMAPLegacySessionEndpoint == "" {
-		settings.JMAPLegacySessionEndpoint = legacySessionEndpoint
-	}
-
-	return settings, nil
-}
-
 func loadKeyValueFile(path string) (map[string]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -145,13 +114,4 @@ func first(values map[string]string, keys ...string) string {
 		}
 	}
 	return ""
-}
-
-func findMarkdownSetting(markdown, label string) string {
-	pattern := regexp.MustCompile(`(?im)^\|\s*` + regexp.QuoteMeta(label) + `\s*\|\s*` + "`([^`]+)`" + `\s*\|`)
-	match := pattern.FindStringSubmatch(markdown)
-	if len(match) != 2 {
-		return ""
-	}
-	return strings.TrimSpace(match[1])
 }

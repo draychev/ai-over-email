@@ -20,6 +20,8 @@ The mailbox persona may be called Pegasus as an homage to Pegasus Mail, the long
 
 ## Local Configuration
 
+Runtime application config lives in tracked `config.json`. It contains non-secret service endpoints such as the Fastmail JMAP session URLs.
+
 Local credentials live in `creds.txt`. Treat that file and any editor backups as secrets; they must not be committed.
 
 Supported credential fields:

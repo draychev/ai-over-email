@@ -17,7 +17,7 @@ func main() {
 
 	lister, err := email.NewLister(email.Config{
 		CredentialsPath: "creds.txt",
-		SettingsPath:    "EmailSettings.md",
+		ConfigPath:      "config.json",
 		Output:          os.Stdout,
 		LogOutput:       os.Stderr,
 	})
