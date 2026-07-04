@@ -7,29 +7,37 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const (
 	openAIResponsesURL = "https://api.openai.com/v1/responses"
+	braveSearchURL     = "https://api.search.brave.com/res/v1/web/search"
 	defaultOpenAIModel = "gpt-5-nano"
 )
 
 type openAIClient struct {
-	token     string
-	fromEmail string
-	http      *http.Client
-	logOutput io.Writer
+	token            string
+	fromEmail        string
+	braveSearchToken string
+	http             *http.Client
+	logOutput        io.Writer
 }
 
 type openAIResponse struct {
+	ID     string             `json:"id"`
 	Output []openAIOutputItem `json:"output"`
 }
 
 type openAIOutputItem struct {
-	Type    string                `json:"type"`
-	Content []openAIOutputContent `json:"content"`
+	Type      string                `json:"type"`
+	Name      string                `json:"name"`
+	CallID    string                `json:"call_id"`
+	Arguments string                `json:"arguments"`
+	Content   []openAIOutputContent `json:"content"`
 }
 
 type openAIOutputContent struct {
@@ -37,10 +45,24 @@ type openAIOutputContent struct {
 	Text string `json:"text"`
 }
 
-func newOpenAIClient(token string, fromEmail string, logOutput io.Writer) *openAIClient {
+type braveSearchResponse struct {
+	Web struct {
+		Results []braveSearchResult `json:"results"`
+	} `json:"web"`
+}
+
+type braveSearchResult struct {
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	Description string `json:"description"`
+	Age         string `json:"age"`
+}
+
+func newOpenAIClient(token string, fromEmail string, braveSearchToken string, logOutput io.Writer) *openAIClient {
 	return &openAIClient{
-		token:     token,
-		fromEmail: strings.TrimSpace(fromEmail),
+		token:            token,
+		fromEmail:        strings.TrimSpace(fromEmail),
+		braveSearchToken: strings.TrimSpace(braveSearchToken),
 		http: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
@@ -85,6 +107,9 @@ Email structure:
 	if c.fromEmail != "" {
 		prompt += "\n\nThe configured sender address is available in local credentials; do not disclose it unless the email context requires it."
 	}
+	if c.braveSearchToken != "" {
+		prompt += "\n\nUse the web_search tool for any current or source-dependent facts. The tool is backed by Brave Search and returns titles, URLs, snippets, and dates when available."
+	}
 
 	input := []map[string]any{
 		{
@@ -96,48 +121,30 @@ Email structure:
 			"content": openAIUserContent(subject, body, attachments),
 		},
 	}
-	payload := map[string]any{
-		"model": defaultOpenAIModel,
-		"input": input,
-		"tools": []map[string]any{
-			{"type": "web_search"},
-		},
-		"tool_choice": "required",
-		"reasoning": map[string]string{
-			"effort": "high",
-		},
-	}
+	payload := c.openAIRequestPayload(input, "")
 
-	data, err := json.Marshal(payload)
+	decoded, err := c.sendOpenAIRequest(ctx, payload)
 	if err != nil {
 		return "", err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAIResponsesURL, bytes.NewReader(data))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	start := time.Now()
-	c.logf("OpenAI Responses request: model=%s reasoning_effort=high web_search=required bytes=%d", defaultOpenAIModel, len(data))
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("OpenAI Responses request: %w", err)
-	}
-	defer resp.Body.Close()
-	c.logf("OpenAI Responses response: status=%s content_type=%s duration=%s", resp.Status, resp.Header.Get("Content-Type"), time.Since(start).Round(time.Millisecond))
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-		return "", fmt.Errorf("OpenAI Responses API error: %s: %s", resp.Status, strings.TrimSpace(string(body)))
-	}
-
-	var decoded openAIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
-		return "", fmt.Errorf("decode OpenAI response: %w", err)
+	if c.braveSearchToken != "" {
+		for i := 0; i < 4; i++ {
+			calls := decoded.functionCalls()
+			if len(calls) == 0 {
+				break
+			}
+			if decoded.ID == "" {
+				return "", fmt.Errorf("OpenAI response requested tools but did not include response id")
+			}
+			outputs, err := c.runFunctionCalls(ctx, calls)
+			if err != nil {
+				return "", err
+			}
+			decoded, err = c.sendOpenAIRequest(ctx, c.openAIRequestPayload(outputs, decoded.ID))
+			if err != nil {
+				return "", err
+			}
+		}
 	}
 
 	text := strings.TrimSpace(decoded.outputText())
@@ -145,6 +152,156 @@ Email structure:
 		return "", fmt.Errorf("OpenAI response did not include output_text")
 	}
 	return text, nil
+}
+
+func (c *openAIClient) openAIRequestPayload(input any, previousResponseID string) map[string]any {
+	tools, toolChoice, searchMode := c.openAITools()
+	payload := map[string]any{
+		"model":       defaultOpenAIModel,
+		"input":       input,
+		"tools":       tools,
+		"tool_choice": toolChoice,
+		"reasoning": map[string]string{
+			"effort": "high",
+		},
+	}
+	if previousResponseID != "" {
+		payload["previous_response_id"] = previousResponseID
+		payload["tool_choice"] = "auto"
+	}
+	payload["_search_mode"] = searchMode
+	return payload
+}
+
+func (c *openAIClient) openAITools() ([]map[string]any, string, string) {
+	if c.braveSearchToken == "" {
+		return []map[string]any{{"type": "web_search"}}, "required", "openai_web_search"
+	}
+	return []map[string]any{{
+		"type":        "function",
+		"name":        "web_search",
+		"description": "Search the web with Brave Search. Use this for current facts, prices, laws, schedules, source links, or anything that may have changed.",
+		"strict":      true,
+		"parameters": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"properties": map[string]any{
+				"query": map[string]any{
+					"type":        "string",
+					"description": "The concise web search query.",
+				},
+				"count": map[string]any{
+					"type":        "integer",
+					"description": "Number of search results to return, from 1 to 10.",
+				},
+			},
+			"required": []string{"query", "count"},
+		},
+	}}, "required", "brave_function"
+}
+
+func (c *openAIClient) sendOpenAIRequest(ctx context.Context, payload map[string]any) (openAIResponse, error) {
+	searchMode, _ := payload["_search_mode"].(string)
+	delete(payload, "_search_mode")
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return openAIResponse{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAIResponsesURL, bytes.NewReader(data))
+	if err != nil {
+		return openAIResponse{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	start := time.Now()
+	c.logf("OpenAI Responses request: model=%s reasoning_effort=high search_mode=%s bytes=%d", defaultOpenAIModel, searchMode, len(data))
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return openAIResponse{}, fmt.Errorf("OpenAI Responses request: %w", err)
+	}
+	defer resp.Body.Close()
+	c.logf("OpenAI Responses response: status=%s content_type=%s duration=%s", resp.Status, resp.Header.Get("Content-Type"), time.Since(start).Round(time.Millisecond))
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+		return openAIResponse{}, fmt.Errorf("OpenAI Responses API error: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+
+	var decoded openAIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return openAIResponse{}, fmt.Errorf("decode OpenAI response: %w", err)
+	}
+	return decoded, nil
+}
+
+func (c *openAIClient) runFunctionCalls(ctx context.Context, calls []openAIOutputItem) ([]map[string]any, error) {
+	outputs := make([]map[string]any, 0, len(calls))
+	for _, call := range calls {
+		if call.Name != "web_search" {
+			return nil, fmt.Errorf("unsupported OpenAI function call %q", call.Name)
+		}
+		var args struct {
+			Query string `json:"query"`
+			Count int    `json:"count"`
+		}
+		if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+			return nil, fmt.Errorf("decode web_search arguments: %w", err)
+		}
+		result, err := c.braveSearch(ctx, args.Query, args.Count)
+		if err != nil {
+			return nil, err
+		}
+		outputs = append(outputs, map[string]any{
+			"type":    "function_call_output",
+			"call_id": call.CallID,
+			"output":  result,
+		})
+	}
+	return outputs, nil
+}
+
+func (c *openAIClient) braveSearch(ctx context.Context, query string, count int) (string, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return "", fmt.Errorf("web_search query is empty")
+	}
+	if count < 1 || count > 10 {
+		count = 5
+	}
+
+	values := url.Values{}
+	values.Set("q", query)
+	values.Set("count", strconv.Itoa(count))
+	values.Set("safesearch", "moderate")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, braveSearchURL+"?"+values.Encode(), nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Subscription-Token", c.braveSearchToken)
+
+	start := time.Now()
+	c.logf("Brave Search request: query_bytes=%d count=%d", len(query), count)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Brave Search request: %w", err)
+	}
+	defer resp.Body.Close()
+	c.logf("Brave Search response: status=%s content_type=%s duration=%s", resp.Status, resp.Header.Get("Content-Type"), time.Since(start).Round(time.Millisecond))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return "", fmt.Errorf("Brave Search API error: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+
+	var decoded braveSearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return "", fmt.Errorf("decode Brave Search response: %w", err)
+	}
+	return formatBraveSearchResults(query, decoded.Web.Results), nil
 }
 
 func openAIUserContent(subject string, body string, attachments []emailAttachment) []map[string]any {
@@ -211,6 +368,52 @@ func (r openAIResponse) outputText() string {
 		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+func (r openAIResponse) functionCalls() []openAIOutputItem {
+	var calls []openAIOutputItem
+	for _, item := range r.Output {
+		if item.Type == "function_call" && item.CallID != "" {
+			calls = append(calls, item)
+		}
+	}
+	return calls
+}
+
+func formatBraveSearchResults(query string, results []braveSearchResult) string {
+	type result struct {
+		Title       string `json:"title"`
+		URL         string `json:"url"`
+		Description string `json:"description,omitempty"`
+		Age         string `json:"age,omitempty"`
+	}
+	output := struct {
+		Query   string   `json:"query"`
+		Results []result `json:"results"`
+	}{
+		Query: strings.TrimSpace(query),
+	}
+	for _, item := range results {
+		title := strings.TrimSpace(item.Title)
+		link := strings.TrimSpace(item.URL)
+		if title == "" || link == "" {
+			continue
+		}
+		output.Results = append(output.Results, result{
+			Title:       title,
+			URL:         link,
+			Description: strings.TrimSpace(item.Description),
+			Age:         strings.TrimSpace(item.Age),
+		})
+		if len(output.Results) >= 10 {
+			break
+		}
+	}
+	data, err := json.Marshal(output)
+	if err != nil {
+		return fmt.Sprintf(`{"query":%q,"results":[]}`, query)
+	}
+	return string(data)
 }
 
 func (c *openAIClient) logf(format string, args ...any) {

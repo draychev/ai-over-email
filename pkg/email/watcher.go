@@ -137,7 +137,7 @@ func NewWatcher(config Config) (*Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	logf(config.LogOutput, "credentials loaded: username_present=%t token_present=%t password_present=%t openai_token_present=%t mailbox=%q", creds.Username != "", creds.Token != "", creds.Password != "", creds.OpenAIAPIToken != "", creds.Mailbox)
+	logf(config.LogOutput, "credentials loaded: username_present=%t token_present=%t password_present=%t openai_token_present=%t brave_search_token_present=%t mailbox=%q", creds.Username != "", creds.Token != "", creds.Password != "", creds.OpenAIAPIToken != "", creds.BraveSearchAPIToken != "", creds.Mailbox)
 
 	logf(config.LogOutput, "loading email settings from %s", config.SettingsPath)
 	settings, err := LoadSettings(config.SettingsPath)
@@ -151,7 +151,7 @@ func NewWatcher(config Config) (*Watcher, error) {
 		creds:    creds,
 		settings: settings,
 		client:   newJMAPClient(creds, config.LogOutput),
-		openai:   newOpenAIClient(creds.OpenAIAPIToken, creds.PublicEmail, config.LogOutput),
+		openai:   newOpenAIClient(creds.OpenAIAPIToken, creds.PublicEmail, creds.BraveSearchAPIToken, config.LogOutput),
 		seen:     make(map[string]struct{}),
 	}, nil
 }

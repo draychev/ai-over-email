@@ -24,6 +24,7 @@ Supported credential fields:
 Token=<Fastmail JMAP API token>
 Username=<mailbox address>
 OpenAIAPIToken=<OpenAI API token>
+BraveSearchAPIToken=<Brave Search API token, optional; enables local Brave-backed web_search tool calls>
 Mailbox=<mailbox name, optional; defaults to inbox>
 PublicEmail=<recipient address for PGP instructions, optional; defaults to Username>
 PlaintextAllowlist=<comma-separated sender addresses allowed to send unencrypted mail>

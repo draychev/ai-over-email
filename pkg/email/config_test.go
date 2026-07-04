@@ -62,6 +62,19 @@ func TestLoadCredentialsPlaintextAllowlist(t *testing.T) {
 	}
 }
 
+func TestLoadCredentialsBraveSearchAPIToken(t *testing.T) {
+	path := writeTempFile(t, "Token=test-token\nBraveSearchAPIToken=brave-token\n")
+
+	creds, err := LoadCredentials(path)
+	if err != nil {
+		t.Fatalf("LoadCredentials returned error: %v", err)
+	}
+
+	if creds.BraveSearchAPIToken != "brave-token" {
+		t.Fatalf("BraveSearchAPIToken = %q", creds.BraveSearchAPIToken)
+	}
+}
+
 func TestLoadSettingsJMAPEndpoints(t *testing.T) {
 	path := writeTempFile(t, "| Setting | Value | Notes |\n| --- | --- | --- |\n| JMAP session endpoint | `https://api.example/session` | current |\n| JMAP legacy Basic auth session endpoint | `https://legacy.example/jmap` | legacy |\n")
 

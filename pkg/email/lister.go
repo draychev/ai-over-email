@@ -36,7 +36,7 @@ func NewLister(config Config) (*Lister, error) {
 	if err != nil {
 		return nil, err
 	}
-	logf(config.LogOutput, "credentials loaded: username_present=%t token_present=%t password_present=%t openai_token_present=%t mailbox=%q", creds.Username != "", creds.Token != "", creds.Password != "", creds.OpenAIAPIToken != "", creds.Mailbox)
+	logf(config.LogOutput, "credentials loaded: username_present=%t token_present=%t password_present=%t openai_token_present=%t brave_search_token_present=%t mailbox=%q", creds.Username != "", creds.Token != "", creds.Password != "", creds.OpenAIAPIToken != "", creds.BraveSearchAPIToken != "", creds.Mailbox)
 
 	logf(config.LogOutput, "loading email settings from %s", config.SettingsPath)
 	settings, err := LoadSettings(config.SettingsPath)

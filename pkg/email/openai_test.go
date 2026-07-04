@@ -1,6 +1,9 @@
 package email
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestOpenAIResponseOutputText(t *testing.T) {
 	response := openAIResponse{
@@ -15,6 +18,63 @@ func TestOpenAIResponseOutputText(t *testing.T) {
 
 	if got := response.outputText(); got != "hello\nworld" {
 		t.Fatalf("outputText() = %q", got)
+	}
+}
+
+func TestOpenAIResponseFunctionCalls(t *testing.T) {
+	response := openAIResponse{
+		Output: []openAIOutputItem{
+			{Type: "message"},
+			{Type: "function_call", Name: "web_search", CallID: "call_1", Arguments: `{"query":"x","count":3}`},
+		},
+	}
+
+	calls := response.functionCalls()
+	if len(calls) != 1 {
+		t.Fatalf("functionCalls length = %d", len(calls))
+	}
+	if calls[0].Name != "web_search" || calls[0].CallID != "call_1" {
+		t.Fatalf("function call = %#v", calls[0])
+	}
+}
+
+func TestOpenAIToolsUseHostedSearchWithoutBraveToken(t *testing.T) {
+	client := &openAIClient{}
+
+	tools, choice, mode := client.openAITools()
+	if choice != "required" || mode != "openai_web_search" {
+		t.Fatalf("choice/mode = %q/%q", choice, mode)
+	}
+	if len(tools) != 1 || tools[0]["type"] != "web_search" {
+		t.Fatalf("tools = %#v", tools)
+	}
+}
+
+func TestOpenAIToolsUseBraveFunctionWithToken(t *testing.T) {
+	client := &openAIClient{braveSearchToken: "token"}
+
+	tools, choice, mode := client.openAITools()
+	if choice != "required" || mode != "brave_function" {
+		t.Fatalf("choice/mode = %q/%q", choice, mode)
+	}
+	if len(tools) != 1 || tools[0]["type"] != "function" || tools[0]["name"] != "web_search" {
+		t.Fatalf("tools = %#v", tools)
+	}
+}
+
+func TestFormatBraveSearchResults(t *testing.T) {
+	got := formatBraveSearchResults("latest go release", []braveSearchResult{
+		{Title: " Go releases ", URL: " https://go.dev/doc/devel/release ", Description: "Release notes", Age: "1 day ago"},
+		{Title: "", URL: "https://example.invalid"},
+	})
+
+	for _, want := range []string{"latest go release", "Go releases", "https://go.dev/doc/devel/release", "Release notes"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("formatted Brave results missing %q: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "example.invalid") {
+		t.Fatalf("formatted Brave results included incomplete result: %s", got)
 	}
 }
 

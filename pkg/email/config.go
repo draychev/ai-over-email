@@ -15,13 +15,14 @@ const (
 )
 
 type Credentials struct {
-	Username           string
-	Password           string
-	Token              string
-	OpenAIAPIToken     string
-	Mailbox            string
-	PublicEmail        string
-	PlaintextAllowlist []string
+	Username            string
+	Password            string
+	Token               string
+	OpenAIAPIToken      string
+	BraveSearchAPIToken string
+	Mailbox             string
+	PublicEmail         string
+	PlaintextAllowlist  []string
 }
 
 type Settings struct {
@@ -36,13 +37,14 @@ func LoadCredentials(path string) (Credentials, error) {
 	}
 
 	creds := Credentials{
-		Username:           first(values, "username", "user", "email"),
-		Password:           first(values, "password", "app_password", "app-password"),
-		Token:              first(values, "token", "api_token", "api-token", "bearer"),
-		OpenAIAPIToken:     first(values, "openai_api_token", "openai-token", "openai_token"),
-		Mailbox:            first(values, "mailbox", "folder"),
-		PublicEmail:        first(values, "publicemail", "public_email", "public-email", "pgpemail", "pgp_email", "pgp-email"),
-		PlaintextAllowlist: splitList(first(values, "plaintextallowlist", "plaintext_allowlist", "plaintext-allowlist", "allowlist")),
+		Username:            first(values, "username", "user", "email"),
+		Password:            first(values, "password", "app_password", "app-password"),
+		Token:               first(values, "token", "api_token", "api-token", "bearer"),
+		OpenAIAPIToken:      first(values, "openai_api_token", "openai-token", "openai_token"),
+		BraveSearchAPIToken: first(values, "bravesearchapitoken", "brave_search_api_token", "brave-search-api-token", "brave_token", "brave-token"),
+		Mailbox:             first(values, "mailbox", "folder"),
+		PublicEmail:         first(values, "publicemail", "public_email", "public-email", "pgpemail", "pgp_email", "pgp-email"),
+		PlaintextAllowlist:  splitList(first(values, "plaintextallowlist", "plaintext_allowlist", "plaintext-allowlist", "allowlist")),
 	}
 	if creds.Token == "" && looksLikeFastmailAPIToken(creds.Password) {
 		creds.Token = creds.Password
