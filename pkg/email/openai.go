@@ -128,7 +128,8 @@ Email structure:
 		return "", err
 	}
 	if c.braveSearchToken != "" {
-		for i := 0; i < 4; i++ {
+		const maxBraveSearchRounds = 4
+		for i := 0; i < maxBraveSearchRounds; i++ {
 			calls := decoded.functionCalls()
 			if len(calls) == 0 {
 				break
@@ -140,7 +141,11 @@ Email structure:
 			if err != nil {
 				return "", err
 			}
-			decoded, err = c.sendOpenAIRequest(ctx, c.openAIRequestPayload(outputs, decoded.ID))
+			if i == maxBraveSearchRounds-1 {
+				decoded, err = c.sendOpenAIRequest(ctx, c.finalOpenAIRequestPayload(outputs, decoded.ID))
+			} else {
+				decoded, err = c.sendOpenAIRequest(ctx, c.openAIRequestPayload(outputs, decoded.ID))
+			}
 			if err != nil {
 				return "", err
 			}
@@ -171,6 +176,18 @@ func (c *openAIClient) openAIRequestPayload(input any, previousResponseID string
 	}
 	payload["_search_mode"] = searchMode
 	return payload
+}
+
+func (c *openAIClient) finalOpenAIRequestPayload(input any, previousResponseID string) map[string]any {
+	return map[string]any{
+		"model":                defaultOpenAIModel,
+		"input":                input,
+		"previous_response_id": previousResponseID,
+		"reasoning": map[string]string{
+			"effort": "high",
+		},
+		"_search_mode": "brave_function_final",
+	}
 }
 
 func (c *openAIClient) openAITools() ([]map[string]any, string, string) {

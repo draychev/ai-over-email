@@ -62,6 +62,21 @@ func TestOpenAIToolsUseBraveFunctionWithToken(t *testing.T) {
 	}
 }
 
+func TestFinalOpenAIRequestPayloadOmitsTools(t *testing.T) {
+	client := &openAIClient{braveSearchToken: "token"}
+
+	payload := client.finalOpenAIRequestPayload([]map[string]any{{"type": "function_call_output"}}, "resp_1")
+	if _, ok := payload["tools"]; ok {
+		t.Fatalf("final payload unexpectedly included tools: %#v", payload)
+	}
+	if payload["previous_response_id"] != "resp_1" {
+		t.Fatalf("previous_response_id = %#v", payload["previous_response_id"])
+	}
+	if payload["_search_mode"] != "brave_function_final" {
+		t.Fatalf("_search_mode = %#v", payload["_search_mode"])
+	}
+}
+
 func TestFormatBraveSearchResults(t *testing.T) {
 	got := formatBraveSearchResults("latest go release", []braveSearchResult{
 		{Title: " Go releases ", URL: " https://go.dev/doc/devel/release ", Description: "Release notes", Age: "1 day ago"},
