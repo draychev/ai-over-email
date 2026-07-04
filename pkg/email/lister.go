@@ -14,10 +14,10 @@ import (
 const listPageSize = 100
 
 type Lister struct {
-	config   Config
-	creds    Credentials
+	config    Config
+	creds     Credentials
 	appConfig appconfig.ConfigStruct
-	client   *jmapClient
+	client    *jmapClient
 
 	accountID string
 }

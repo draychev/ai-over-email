@@ -29,12 +29,12 @@ type Config struct {
 }
 
 type Watcher struct {
-	config   Config
-	creds    Credentials
+	config    Config
+	creds     Credentials
 	appConfig appconfig.ConfigStruct
-	client   *jmapClient
-	openai   *openAIClient
-	store    *correspondentStore
+	client    *jmapClient
+	openai    *openAIClient
+	store     *correspondentStore
 
 	accountID  string
 	inboxID    string
