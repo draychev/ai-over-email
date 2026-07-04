@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const openAIResponsesURL = "https://api.openai.com/v1/responses"
+const (
+	openAIResponsesURL = "https://api.openai.com/v1/responses"
+	defaultOpenAIModel = "gpt-5-nano"
+)
 
 type openAIClient struct {
 	token     string
@@ -94,7 +97,7 @@ Email structure:
 		},
 	}
 	payload := map[string]any{
-		"model": "gpt-5.5",
+		"model": defaultOpenAIModel,
 		"input": input,
 		"tools": []map[string]any{
 			{"type": "web_search"},
@@ -119,7 +122,7 @@ Email structure:
 	req.Header.Set("Accept", "application/json")
 
 	start := time.Now()
-	c.logf("OpenAI Responses request: model=gpt-5.5 reasoning_effort=high web_search=required bytes=%d", len(data))
+	c.logf("OpenAI Responses request: model=%s reasoning_effort=high web_search=required bytes=%d", defaultOpenAIModel, len(data))
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("OpenAI Responses request: %w", err)
