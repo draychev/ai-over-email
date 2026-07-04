@@ -130,6 +130,23 @@ func TestCorrespondentStoreCountsDailyUsage(t *testing.T) {
 	}
 }
 
+func TestCorrespondentStoreCountsOutboundEmails(t *testing.T) {
+	ctx := context.Background()
+	store := openTestCorrespondentStore(t)
+
+	first, err := store.NextOutboundEmailTotal(ctx)
+	if err != nil {
+		t.Fatalf("first NextOutboundEmailTotal returned error: %v", err)
+	}
+	second, err := store.NextOutboundEmailTotal(ctx)
+	if err != nil {
+		t.Fatalf("second NextOutboundEmailTotal returned error: %v", err)
+	}
+	if first != 1 || second != 2 {
+		t.Fatalf("outbound totals = %d, %d; want 1, 2", first, second)
+	}
+}
+
 func TestExtractCorrespondentProfileUpdateUTCOffset(t *testing.T) {
 	update := extractCorrespondentProfileUpdate("zip 94105, timezone UTC-7")
 

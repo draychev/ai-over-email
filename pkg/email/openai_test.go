@@ -21,6 +21,16 @@ func TestOpenAIResponseOutputText(t *testing.T) {
 	}
 }
 
+func TestOpenAIUsageAddsTokenCounts(t *testing.T) {
+	first := openAIUsage{InputTokens: 10, OutputTokens: 5, TotalTokens: 15, ReasoningTokens: 2, CachedInputTokens: 3}
+	second := openAIUsage{InputTokens: 7, OutputTokens: 4, TotalTokens: 11, ReasoningTokens: 1, CachedInputTokens: 2}
+
+	got := first.add(second)
+	if got.InputTokens != 17 || got.OutputTokens != 9 || got.TotalTokens != 26 || got.ReasoningTokens != 3 || got.CachedInputTokens != 5 {
+		t.Fatalf("add = %#v", got)
+	}
+}
+
 func TestOpenAIResponseFunctionCalls(t *testing.T) {
 	response := openAIResponse{
 		Output: []openAIOutputItem{

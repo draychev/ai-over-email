@@ -38,6 +38,14 @@ type correspondentDailyUsage struct {
 	Allowed bool
 }
 
+func (u correspondentDailyUsage) remaining() int {
+	remaining := dailyMessageLimit - u.Count
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
 var (
 	zipCodePattern  = regexp.MustCompile(`\b\d{5}(?:-\d{4})?\b`)
 	utcZonePattern  = regexp.MustCompile(`(?i)\b(?:UTC|GMT)\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?\b`)
@@ -91,6 +99,11 @@ func (s *correspondentStore) migrate(ctx context.Context) error {
 			updated_at TEXT NOT NULL,
 			PRIMARY KEY (email, day)
 		)`,
+		`CREATE TABLE IF NOT EXISTS outbound_email_totals (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			total_sent INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL
+		)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -98,6 +111,35 @@ func (s *correspondentStore) migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *correspondentStore) NextOutboundEmailTotal(ctx context.Context) (int64, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `INSERT INTO outbound_email_totals (id, total_sent, updated_at)
+		VALUES (1, 0, ?)
+		ON CONFLICT(id) DO NOTHING`, now); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE outbound_email_totals
+		SET total_sent = total_sent + 1,
+			updated_at = ?
+		WHERE id = 1`, now); err != nil {
+		return 0, err
+	}
+	var total int64
+	if err := tx.QueryRowContext(ctx, `SELECT total_sent FROM outbound_email_totals WHERE id = 1`).Scan(&total); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 func (s *correspondentStore) CountInboundMessage(ctx context.Context, email string, limit int, now time.Time) (correspondentDailyUsage, error) {

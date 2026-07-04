@@ -4,12 +4,20 @@ import (
 	"bytes"
 	"fmt"
 	"html"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 )
+
+type emailFooterStats struct {
+	TokensUsed        int
+	TotalEmailsEver   int64
+	RemainingToday    int
+	DailyMessageLimit int
+}
 
 func extractEmailBody(msg emailMessage) string {
 	for _, part := range msg.TextBody {
@@ -131,4 +139,33 @@ func htmlEmailText(body string) string {
 	body = strings.ReplaceAll(body, "\r", "\n")
 	escaped := html.EscapeString(body)
 	return strings.ReplaceAll(escaped, "\n", "<br>\n")
+}
+
+func appendResponseFooterText(body string, stats emailFooterStats) string {
+	body = strings.TrimRight(strings.TrimSpace(body), "\r\n")
+	return body + "\n\n---\n" + responseFooterText(stats)
+}
+
+func appendResponseFooterHTML(body string, stats emailFooterStats) string {
+	body = strings.TrimSpace(body)
+	footer := `<hr>
+<p><small>` + htmlEmailText(responseFooterText(stats)) + `</small></p>`
+	if body == "" {
+		return footer
+	}
+	return body + "\n" + footer
+}
+
+func responseFooterText(stats emailFooterStats) string {
+	remaining := stats.RemainingToday
+	if remaining < 0 {
+		remaining = 0
+	}
+	limit := stats.DailyMessageLimit
+	if limit <= 0 {
+		limit = dailyMessageLimit
+	}
+	return "Tokens used for this email: " + strconv.Itoa(stats.TokensUsed) + "\n" +
+		"Total emails sent by this service: " + strconv.FormatInt(stats.TotalEmailsEver, 10) + "\n" +
+		"Messages remaining today: " + strconv.Itoa(remaining) + " of " + strconv.Itoa(limit)
 }

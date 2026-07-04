@@ -163,3 +163,43 @@ func TestReplyQuoteDateFallsBackToReceivedAt(t *testing.T) {
 		t.Fatalf("replyQuoteDate = %q, want %q", got, want)
 	}
 }
+
+func TestAppendResponseFooterText(t *testing.T) {
+	got := appendResponseFooterText("Answer.", emailFooterStats{
+		TokensUsed:        123,
+		TotalEmailsEver:   45,
+		RemainingToday:    6,
+		DailyMessageLimit: 10,
+	})
+
+	for _, want := range []string{
+		"Answer.\n\n---\n",
+		"Tokens used for this email: 123",
+		"Total emails sent by this service: 45",
+		"Messages remaining today: 6 of 10",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("footer text missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestAppendResponseFooterHTML(t *testing.T) {
+	got := appendResponseFooterHTML("<p>Answer.</p>", emailFooterStats{
+		TokensUsed:        123,
+		TotalEmailsEver:   45,
+		RemainingToday:    6,
+		DailyMessageLimit: 10,
+	})
+
+	for _, want := range []string{
+		"<p>Answer.</p>\n<hr>",
+		"Tokens used for this email: 123",
+		"Total emails sent by this service: 45",
+		"Messages remaining today: 6 of 10",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("footer HTML missing %q in %q", want, got)
+		}
+	}
+}

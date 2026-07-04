@@ -30,6 +30,20 @@ type openAIClient struct {
 type openAIResponse struct {
 	ID     string             `json:"id"`
 	Output []openAIOutputItem `json:"output"`
+	Usage  openAIUsage        `json:"usage"`
+}
+
+type openAIAnswer struct {
+	Text  string
+	Usage openAIUsage
+}
+
+type openAIUsage struct {
+	InputTokens       int `json:"input_tokens"`
+	OutputTokens      int `json:"output_tokens"`
+	TotalTokens       int `json:"total_tokens"`
+	ReasoningTokens   int `json:"reasoning_tokens"`
+	CachedInputTokens int `json:"cached_input_tokens"`
 }
 
 type openAIOutputItem struct {
@@ -70,9 +84,9 @@ func newOpenAIClient(token string, fromEmail string, braveSearchToken string, lo
 	}
 }
 
-func (c *openAIClient) AnswerEmail(ctx context.Context, subject string, body string, attachments []emailAttachment) (string, error) {
+func (c *openAIClient) AnswerEmail(ctx context.Context, subject string, body string, attachments []emailAttachment) (openAIAnswer, error) {
 	if c.token == "" {
-		return "", fmt.Errorf("OPENAI_API_TOKEN is not configured")
+		return openAIAnswer{}, fmt.Errorf("OPENAI_API_TOKEN is not configured")
 	}
 
 	prompt := `You are composing an email reply.
@@ -125,8 +139,9 @@ Email structure:
 
 	decoded, err := c.sendOpenAIRequest(ctx, payload)
 	if err != nil {
-		return "", err
+		return openAIAnswer{}, err
 	}
+	usage := decoded.Usage
 	if c.braveSearchToken != "" {
 		const maxBraveSearchRounds = 4
 		for i := 0; i < maxBraveSearchRounds; i++ {
@@ -135,11 +150,11 @@ Email structure:
 				break
 			}
 			if decoded.ID == "" {
-				return "", fmt.Errorf("OpenAI response requested tools but did not include response id")
+				return openAIAnswer{}, fmt.Errorf("OpenAI response requested tools but did not include response id")
 			}
 			outputs, err := c.runFunctionCalls(ctx, calls)
 			if err != nil {
-				return "", err
+				return openAIAnswer{}, err
 			}
 			if i == maxBraveSearchRounds-1 {
 				decoded, err = c.sendOpenAIRequest(ctx, c.finalOpenAIRequestPayload(outputs, decoded.ID))
@@ -147,16 +162,27 @@ Email structure:
 				decoded, err = c.sendOpenAIRequest(ctx, c.openAIRequestPayload(braveSearchFollowupInput(outputs, false), decoded.ID))
 			}
 			if err != nil {
-				return "", err
+				return openAIAnswer{}, err
 			}
+			usage = usage.add(decoded.Usage)
 		}
 	}
 
 	text := strings.TrimSpace(decoded.outputText())
 	if text == "" {
-		return "", fmt.Errorf("OpenAI response did not include output_text")
+		return openAIAnswer{}, fmt.Errorf("OpenAI response did not include output_text")
 	}
-	return text, nil
+	return openAIAnswer{Text: text, Usage: usage}, nil
+}
+
+func (u openAIUsage) add(other openAIUsage) openAIUsage {
+	return openAIUsage{
+		InputTokens:       u.InputTokens + other.InputTokens,
+		OutputTokens:      u.OutputTokens + other.OutputTokens,
+		TotalTokens:       u.TotalTokens + other.TotalTokens,
+		ReasoningTokens:   u.ReasoningTokens + other.ReasoningTokens,
+		CachedInputTokens: u.CachedInputTokens + other.CachedInputTokens,
+	}
 }
 
 func (c *openAIClient) openAIRequestPayload(input any, previousResponseID string) map[string]any {

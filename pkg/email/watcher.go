@@ -602,15 +602,15 @@ func (w *Watcher) maybeAutoReply(ctx context.Context, msg emailMessage) error {
 	if err != nil {
 		return err
 	}
-	if err := w.registerCorrespondents(ctx, full); err != nil {
-		return err
-	}
-	limited, err := w.enforceDailyMessageLimit(ctx, full)
+	usage, limited, err := w.enforceDailyMessageLimit(ctx, full)
 	if err != nil {
 		return err
 	}
 	if limited {
 		return w.deleteEmail(ctx, full.ID)
+	}
+	if err := w.registerCorrespondents(ctx, full, usage); err != nil {
+		return err
 	}
 	body, protectedSubject, attachments, rejectReason, err := w.decryptVerifiedEmail(ctx, full)
 	if err != nil {
@@ -622,7 +622,7 @@ func (w *Watcher) maybeAutoReply(ctx context.Context, msg emailMessage) error {
 	}
 	if rejectReason != "" {
 		w.logf("auto-reply rejected by PGP policy: id=%s reason=%s", msg.ID, rejectReason)
-		if err := w.sendReply(ctx, full, pgpRequiredReply(rejectReason, w.creds.PublicEmail), "", nil); err != nil {
+		if err := w.sendReply(ctx, full, pgpRequiredReply(rejectReason, w.creds.PublicEmail), "", nil, emailFooterStats{RemainingToday: usage.remaining(), DailyMessageLimit: dailyMessageLimit}); err != nil {
 			return err
 		}
 		return w.deleteEmail(ctx, full.ID)
@@ -639,9 +639,13 @@ func (w *Watcher) maybeAutoReply(ctx context.Context, msg emailMessage) error {
 	if err != nil {
 		return err
 	}
-	w.logf("auto-reply model response received: id=%s response_bytes=%d", msg.ID, len(reply))
+	w.logf("auto-reply model response received: id=%s response_bytes=%d total_tokens=%d", msg.ID, len(reply.Text), reply.Usage.TotalTokens)
 
-	if err := w.sendReply(ctx, full, reply, body, attachments); err != nil {
+	if err := w.sendReply(ctx, full, reply.Text, body, attachments, emailFooterStats{
+		TokensUsed:        reply.Usage.TotalTokens,
+		RemainingToday:    usage.remaining(),
+		DailyMessageLimit: dailyMessageLimit,
+	}); err != nil {
 		return err
 	}
 	return w.deleteEmail(ctx, full.ID)
@@ -693,7 +697,7 @@ func (w *Watcher) fetchEmailForReply(ctx context.Context, id string) (emailMessa
 	return emailMessage{}, fmt.Errorf("JMAP fetch email returned no Email/get response")
 }
 
-func (w *Watcher) registerCorrespondents(ctx context.Context, msg emailMessage) error {
+func (w *Watcher) registerCorrespondents(ctx context.Context, msg emailMessage, usage correspondentDailyUsage) error {
 	if w.store == nil {
 		return nil
 	}
@@ -709,7 +713,7 @@ func (w *Watcher) registerCorrespondents(ctx context.Context, msg emailMessage) 
 		}
 		w.logf("correspondent registered: email=%s new=%t zip_present=%t timezone_present=%t profile_request_needed=%t", email, registered.New, registered.ZipPresent, registered.TimezonePresent, registered.ProfileRequestNeeded)
 		if registered.ProfileRequestNeeded {
-			if err := w.sendProfileRequest(ctx, from); err != nil {
+			if err := w.sendProfileRequest(ctx, from, emailFooterStats{RemainingToday: usage.remaining(), DailyMessageLimit: dailyMessageLimit}); err != nil {
 				return err
 			}
 			if err := w.store.MarkProfileRequestSent(ctx, email); err != nil {
@@ -721,9 +725,9 @@ func (w *Watcher) registerCorrespondents(ctx context.Context, msg emailMessage) 
 	return nil
 }
 
-func (w *Watcher) enforceDailyMessageLimit(ctx context.Context, msg emailMessage) (bool, error) {
+func (w *Watcher) enforceDailyMessageLimit(ctx context.Context, msg emailMessage) (correspondentDailyUsage, bool, error) {
 	if w.store == nil {
-		return false, nil
+		return correspondentDailyUsage{Count: 0, Allowed: true}, false, nil
 	}
 	for _, from := range msg.From {
 		email := strings.ToLower(strings.TrimSpace(from.Email))
@@ -732,21 +736,22 @@ func (w *Watcher) enforceDailyMessageLimit(ctx context.Context, msg emailMessage
 		}
 		usage, err := w.store.CountInboundMessage(ctx, email, dailyMessageLimit, time.Now())
 		if err != nil {
-			return false, err
+			return correspondentDailyUsage{}, false, err
 		}
 		w.logf("correspondent daily usage counted: email=%s day=%s count=%d limit=%d allowed=%t", email, usage.Day, usage.Count, dailyMessageLimit, usage.Allowed)
 		if !usage.Allowed {
-			if err := w.sendRateLimitReply(ctx, from, usage); err != nil {
-				return false, err
+			if err := w.sendRateLimitReply(ctx, from, usage, emailFooterStats{RemainingToday: usage.remaining(), DailyMessageLimit: dailyMessageLimit}); err != nil {
+				return correspondentDailyUsage{}, false, err
 			}
 			w.logf("correspondent daily limit reply sent: email=%s day=%s count=%d limit=%d", email, usage.Day, usage.Count, dailyMessageLimit)
-			return true, nil
+			return usage, true, nil
 		}
+		return usage, false, nil
 	}
-	return false, nil
+	return correspondentDailyUsage{Count: 0, Allowed: true}, false, nil
 }
 
-func (w *Watcher) sendRateLimitReply(ctx context.Context, to emailAddress, usage correspondentDailyUsage) error {
+func (w *Watcher) sendRateLimitReply(ctx context.Context, to emailAddress, usage correspondentDailyUsage, footer emailFooterStats) error {
 	body := fmt.Sprintf(strings.TrimSpace(`Hello,
 
 This address accepts up to %d messages per sender per UTC day.
@@ -758,10 +763,10 @@ Thanks.`), dailyMessageLimit, usage.Day)
 	if err != nil {
 		return err
 	}
-	return w.sendEmail(ctx, []emailAddress{to}, "Daily message limit reached", body, htmlBody, nil, emailMessage{})
+	return w.sendEmail(ctx, []emailAddress{to}, "Daily message limit reached", body, htmlBody, nil, emailMessage{}, footer)
 }
 
-func (w *Watcher) sendProfileRequest(ctx context.Context, to emailAddress) error {
+func (w *Watcher) sendProfileRequest(ctx context.Context, to emailAddress, footer emailFooterStats) error {
 	body := strings.TrimSpace(`Hello,
 
 I keep a small local profile for people who email this address so replies can handle local context correctly.
@@ -776,7 +781,7 @@ Thanks.`)
 	if err != nil {
 		return err
 	}
-	return w.sendEmail(ctx, []emailAddress{to}, "A quick setup question", body, htmlBody, nil, emailMessage{})
+	return w.sendEmail(ctx, []emailAddress{to}, "A quick setup question", body, htmlBody, nil, emailMessage{}, footer)
 }
 
 func (w *Watcher) updateCorrespondentProfiles(ctx context.Context, msg emailMessage, body string) error {
@@ -800,7 +805,7 @@ func (w *Watcher) updateCorrespondentProfiles(ctx context.Context, msg emailMess
 	return nil
 }
 
-func (w *Watcher) sendReply(ctx context.Context, original emailMessage, body string, originalBody string, attachments []emailAttachment) error {
+func (w *Watcher) sendReply(ctx context.Context, original emailMessage, body string, originalBody string, attachments []emailAttachment, footer emailFooterStats) error {
 	to := original.From
 	if len(to) == 0 {
 		return fmt.Errorf("original email has no From address")
@@ -816,10 +821,23 @@ func (w *Watcher) sendReply(ctx context.Context, original emailMessage, body str
 	if err != nil {
 		return err
 	}
-	return w.sendEmail(ctx, to, subject, replyBody, replyHTMLBody, replyAttachments, original)
+	return w.sendEmail(ctx, to, subject, replyBody, replyHTMLBody, replyAttachments, original, footer)
 }
 
-func (w *Watcher) sendEmail(ctx context.Context, to []emailAddress, subject string, textBody string, htmlBody string, attachments []map[string]any, original emailMessage) error {
+func (w *Watcher) sendEmail(ctx context.Context, to []emailAddress, subject string, textBody string, htmlBody string, attachments []map[string]any, original emailMessage, footer emailFooterStats) error {
+	if w.store != nil {
+		total, err := w.store.NextOutboundEmailTotal(ctx)
+		if err != nil {
+			return err
+		}
+		footer.TotalEmailsEver = total
+	}
+	if footer.DailyMessageLimit == 0 {
+		footer.DailyMessageLimit = dailyMessageLimit
+	}
+	textBody = appendResponseFooterText(textBody, footer)
+	htmlBody = appendResponseFooterHTML(htmlBody, footer)
+
 	createEmail := map[string]any{
 		"from":     []emailAddress{{Email: w.creds.Username}},
 		"to":       to,
