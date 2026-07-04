@@ -108,7 +108,7 @@ Email structure:
 		prompt += "\n\nThe configured sender address is available in local credentials; do not disclose it unless the email context requires it."
 	}
 	if c.braveSearchToken != "" {
-		prompt += "\n\nUse the web_search tool for any current or source-dependent facts. The tool is backed by Brave Search and returns titles, URLs, snippets, and dates when available."
+		prompt += "\n\nUse the web_search tool for current or source-dependent facts. The tool is backed by Brave Search and returns titles, URLs, snippets, and dates when available. Once you have enough source context, stop searching and write the final email reply."
 	}
 
 	input := []map[string]any{
@@ -175,7 +175,7 @@ func (c *openAIClient) openAIRequestPayload(input any, previousResponseID string
 
 func (c *openAIClient) openAITools() ([]map[string]any, string, string) {
 	if c.braveSearchToken == "" {
-		return []map[string]any{{"type": "web_search"}}, "required", "openai_web_search"
+		return []map[string]any{{"type": "web_search"}}, "auto", "openai_web_search"
 	}
 	return []map[string]any{{
 		"type":        "function",
@@ -197,7 +197,7 @@ func (c *openAIClient) openAITools() ([]map[string]any, string, string) {
 			},
 			"required": []string{"query", "count"},
 		},
-	}}, "required", "brave_function"
+	}}, "auto", "brave_function"
 }
 
 func (c *openAIClient) sendOpenAIRequest(ctx context.Context, payload map[string]any) (openAIResponse, error) {

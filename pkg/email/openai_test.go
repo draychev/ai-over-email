@@ -42,7 +42,7 @@ func TestOpenAIToolsUseHostedSearchWithoutBraveToken(t *testing.T) {
 	client := &openAIClient{}
 
 	tools, choice, mode := client.openAITools()
-	if choice != "required" || mode != "openai_web_search" {
+	if choice != "auto" || mode != "openai_web_search" {
 		t.Fatalf("choice/mode = %q/%q", choice, mode)
 	}
 	if len(tools) != 1 || tools[0]["type"] != "web_search" {
@@ -54,7 +54,7 @@ func TestOpenAIToolsUseBraveFunctionWithToken(t *testing.T) {
 	client := &openAIClient{braveSearchToken: "token"}
 
 	tools, choice, mode := client.openAITools()
-	if choice != "required" || mode != "brave_function" {
+	if choice != "auto" || mode != "brave_function" {
 		t.Fatalf("choice/mode = %q/%q", choice, mode)
 	}
 	if len(tools) != 1 || tools[0]["type"] != "function" || tools[0]["name"] != "web_search" {
