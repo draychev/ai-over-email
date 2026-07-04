@@ -21,11 +21,11 @@ const (
 )
 
 type Config struct {
-	CredentialsPath string
-	ConfigPath      string
-	DatabasePath    string
-	Output          io.Writer
-	LogOutput       io.Writer
+	EnvPath      string
+	ConfigPath   string
+	DatabasePath string
+	Output       io.Writer
+	LogOutput    io.Writer
 }
 
 type Watcher struct {
@@ -138,8 +138,8 @@ type identityGetResponse struct {
 func NewWatcher(config Config) (*Watcher, error) {
 	config = normalizeConfig(config)
 
-	logf(config.LogOutput, "loading credentials from %s", config.CredentialsPath)
-	creds, err := LoadCredentials(config.CredentialsPath)
+	logf(config.LogOutput, "loading credentials from environment with optional env file %s", config.EnvPath)
+	creds, err := LoadCredentials(config.EnvPath)
 	if err != nil {
 		return nil, err
 	}

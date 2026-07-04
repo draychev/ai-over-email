@@ -32,7 +32,7 @@ Do not enable secure password authentication (SPA).
 | JMAP session endpoint | `https://api.fastmail.com/jmap/session` | Current Fastmail API session endpoint. Use a JMAP API token as a bearer token. |
 | JMAP legacy Basic auth session endpoint | `https://jmap.fastmail.com/.well-known/jmap` | Legacy session endpoint for username plus app-specific password Basic auth. Current Fastmail accounts should use an API token instead. |
 
-For this repo, runtime JMAP endpoints live in `config.json`. Put the JMAP API token in `creds.txt` as `Token=...`. `Username=...` can still be used to document which mailbox the token belongs to, and `Mailbox=...` can override the watched mailbox. If `Mailbox` is omitted, the watcher uses the inbox.
+For this repo, runtime JMAP endpoints live in `config.json`. Put the JMAP API token in `AI_OVER_EMAIL_FASTMAIL_TOKEN` through the process environment, a local `.env`, or the systemd environment file at `%h/.config/ai-over-email/env`. `AI_OVER_EMAIL_USERNAME` can still be used to document which mailbox the token belongs to and to select the outbound identity. `AI_OVER_EMAIL_MAILBOX` can override the watched mailbox; if it is omitted, the watcher uses the inbox.
 
 ## Firewall Proxy Servers
 

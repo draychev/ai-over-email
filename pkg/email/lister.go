@@ -34,8 +34,8 @@ type emailQueryResponse struct {
 func NewLister(config Config) (*Lister, error) {
 	config = normalizeConfig(config)
 
-	logf(config.LogOutput, "loading credentials from %s", config.CredentialsPath)
-	creds, err := LoadCredentials(config.CredentialsPath)
+	logf(config.LogOutput, "loading credentials from environment with optional env file %s", config.EnvPath)
+	creds, err := LoadCredentials(config.EnvPath)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +167,8 @@ func cleanListField(value string) string {
 }
 
 func normalizeConfig(config Config) Config {
-	if config.CredentialsPath == "" {
-		config.CredentialsPath = "creds.txt"
+	if config.EnvPath == "" {
+		config.EnvPath = defaultEnvPath
 	}
 	if config.ConfigPath == "" {
 		config.ConfigPath = "config.json"

@@ -16,10 +16,10 @@ func main() {
 	defer stop()
 
 	watcher, err := email.NewWatcher(email.Config{
-		CredentialsPath: "creds.txt",
-		ConfigPath:      "config.json",
-		Output:          os.Stdout,
-		LogOutput:       os.Stderr,
+		EnvPath:    ".env",
+		ConfigPath: "config.json",
+		Output:     os.Stdout,
+		LogOutput:  os.Stderr,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mailwatch: %v\n", err)

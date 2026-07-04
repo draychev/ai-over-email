@@ -22,18 +22,18 @@ The mailbox persona may be called Pegasus as an homage to Pegasus Mail, the long
 
 Runtime application config lives in tracked `config.json`. It contains non-secret service endpoints such as the Fastmail JMAP session URLs.
 
-Local credentials live in `creds.txt`. Treat that file and any editor backups as secrets; they must not be committed.
+Credentials are read from environment variables. For local development, copy `.env.example` to `.env` and put real values there. `.env` is ignored and must not be committed.
 
-Supported credential fields:
+Supported environment variables:
 
 ```text
-Token=<Fastmail JMAP API token>
-Username=<mailbox address>
-OpenAIAPIToken=<OpenAI API token>
-BraveSearchAPIToken=<Brave Search API token, optional; enables local Brave-backed web_search tool calls>
-Mailbox=<mailbox name, optional; defaults to inbox>
-PublicEmail=<recipient address for PGP instructions, optional; defaults to Username>
-PlaintextAllowlist=<comma-separated sender addresses allowed to send unencrypted mail>
+AI_OVER_EMAIL_FASTMAIL_TOKEN=<Fastmail JMAP API token>
+AI_OVER_EMAIL_USERNAME=<mailbox address, required only for legacy password auth and outbound identity selection>
+AI_OVER_EMAIL_OPENAI_API_KEY=<OpenAI API token>
+AI_OVER_EMAIL_BRAVE_API_KEY=<Brave Search API token, optional; enables local Brave-backed web_search tool calls>
+AI_OVER_EMAIL_MAILBOX=<mailbox name, optional; defaults to inbox>
+AI_OVER_EMAIL_PUBLIC_EMAIL=<recipient address for PGP instructions, optional; defaults to AI_OVER_EMAIL_USERNAME>
+AI_OVER_EMAIL_PLAINTEXT_ALLOWLIST=<comma-separated sender addresses allowed to send unencrypted mail>
 ```
 
 Keep personal addresses, credentials, API keys, access tokens, refresh tokens, and other secrets only in local untracked files.
@@ -48,7 +48,7 @@ make run
 
 ## PGP Policy
 
-Plaintext mail is only accepted from senders listed in `PlaintextAllowlist`. All other accepted messages must be OpenPGP messages that are encrypted to the configured recipient key and signed by the sender.
+Plaintext mail is only accepted from senders listed in `AI_OVER_EMAIL_PLAINTEXT_ALLOWLIST`. All other accepted messages must be OpenPGP messages that are encrypted to the configured recipient key and signed by the sender.
 
 Rejected messages receive setup instructions instead of being sent to the model. The original rejected email is deleted after the rejection reply is sent.
 
@@ -66,6 +66,8 @@ After changing the unit file:
 systemctl --user daemon-reload
 systemctl --user restart ai-over-email-mailwatch.service
 ```
+
+The unit reads production credentials from `%h/.config/ai-over-email/env`. Create that file with the same variable names shown in `.env.example` and restrict it with `chmod 600`.
 
 ## Verification
 

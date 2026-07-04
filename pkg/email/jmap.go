@@ -116,7 +116,7 @@ func (c *jmapClient) FetchSession(ctx context.Context, config appconfig.ConfigSt
 		}
 	}
 
-	return fmt.Errorf("could not open JMAP session; Fastmail's current JMAP API requires a JMAP API token in creds.txt as Token=...; attempts: %s", strings.Join(attempts, " | "))
+	return fmt.Errorf("could not open JMAP session; Fastmail's current JMAP API requires a JMAP API token in AI_OVER_EMAIL_FASTMAIL_TOKEN; attempts: %s", strings.Join(attempts, " | "))
 }
 
 func (c *jmapClient) fetchSessionAt(ctx context.Context, endpoint string) error {

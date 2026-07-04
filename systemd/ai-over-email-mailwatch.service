@@ -7,7 +7,8 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/de/src/ai-over-email
-Environment=PATH=/home/de/.local/bin:/home/de/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+EnvironmentFile=%h/.config/ai-over-email/env
+Environment=PATH=/home/de/go/go1.26.4/bin:/home/de/.local/bin:/home/de/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
 ExecStart=/usr/bin/make run
 Restart=always
 RestartSec=5

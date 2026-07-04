@@ -16,10 +16,10 @@ func main() {
 	defer stop()
 
 	lister, err := email.NewLister(email.Config{
-		CredentialsPath: "creds.txt",
-		ConfigPath:      "config.json",
-		Output:          os.Stdout,
-		LogOutput:       os.Stderr,
+		EnvPath:    ".env",
+		ConfigPath: "config.json",
+		Output:     os.Stdout,
+		LogOutput:  os.Stderr,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "maillist: %v\n", err)
