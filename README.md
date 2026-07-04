@@ -12,6 +12,7 @@ The mailbox persona may be called Pegasus as an homage to Pegasus Mail, the long
 - Keeps a local SQLite correspondent profile database at `.tmp/correspondents.sqlite3`.
 - Records each sender's email address, display name, derived email-header UTC offset when available, and whether a profile setup request was sent.
 - Sends a one-time setup email to new correspondents asking for ZIP code and time zone when either value is missing.
+- Limits each sender to 10 inbound messages per UTC day and sends a limit notice when they exceed it.
 - Sends accepted replies as HTML email with a plain-text fallback.
 - Preserves normal reply headers, quotes the original message, and reattaches original attachments.
 - Sends image attachments to the model as image inputs and other attachments as file inputs when available.

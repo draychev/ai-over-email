@@ -31,6 +31,13 @@ type correspondentProfileUpdate struct {
 	TimeZone string
 }
 
+type correspondentDailyUsage struct {
+	Email   string
+	Day     string
+	Count   int
+	Allowed bool
+}
+
 var (
 	zipCodePattern  = regexp.MustCompile(`\b\d{5}(?:-\d{4})?\b`)
 	utcZonePattern  = regexp.MustCompile(`(?i)\b(?:UTC|GMT)\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?\b`)
@@ -75,6 +82,15 @@ func (s *correspondentStore) migrate(ctx context.Context) error {
 			last_seen_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS correspondent_daily_usage (
+			email TEXT NOT NULL,
+			day TEXT NOT NULL,
+			message_count INTEGER NOT NULL DEFAULT 0,
+			first_message_at TEXT NOT NULL,
+			last_message_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (email, day)
+		)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -82,6 +98,55 @@ func (s *correspondentStore) migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *correspondentStore) CountInboundMessage(ctx context.Context, email string, limit int, now time.Time) (correspondentDailyUsage, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return correspondentDailyUsage{}, fmt.Errorf("correspondent email is empty")
+	}
+	if limit < 1 {
+		return correspondentDailyUsage{}, fmt.Errorf("daily message limit must be positive")
+	}
+	now = now.UTC()
+	day := now.Format("2006-01-02")
+	nowText := now.Format(time.RFC3339Nano)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return correspondentDailyUsage{}, err
+	}
+	defer tx.Rollback()
+
+	var count int
+	err = tx.QueryRowContext(ctx, `SELECT message_count FROM correspondent_daily_usage WHERE email = ? AND day = ?`, email, day).Scan(&count)
+	switch {
+	case err == sql.ErrNoRows:
+		count = 1
+		if _, err := tx.ExecContext(ctx, `INSERT INTO correspondent_daily_usage (
+			email, day, message_count, first_message_at, last_message_at, updated_at
+		) VALUES (?, ?, 1, ?, ?, ?)`, email, day, nowText, nowText, nowText); err != nil {
+			return correspondentDailyUsage{}, err
+		}
+	case err != nil:
+		return correspondentDailyUsage{}, err
+	default:
+		count++
+		if _, err := tx.ExecContext(ctx, `UPDATE correspondent_daily_usage
+			SET message_count = ?, last_message_at = ?, updated_at = ?
+			WHERE email = ? AND day = ?`, count, nowText, nowText, email, day); err != nil {
+			return correspondentDailyUsage{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return correspondentDailyUsage{}, err
+	}
+	return correspondentDailyUsage{
+		Email:   email,
+		Day:     day,
+		Count:   count,
+		Allowed: count <= limit,
+	}, nil
 }
 
 func (s *correspondentStore) Register(ctx context.Context, email string, displayName string, derivedTimeZone string) (correspondentRegistration, error) {

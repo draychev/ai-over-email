@@ -15,6 +15,7 @@ import (
 const (
 	inboxSafetyScanInterval = 5 * time.Minute
 	inboxSafetyScanLimit    = 50
+	dailyMessageLimit       = 10
 )
 
 type Config struct {
@@ -604,6 +605,13 @@ func (w *Watcher) maybeAutoReply(ctx context.Context, msg emailMessage) error {
 	if err := w.registerCorrespondents(ctx, full); err != nil {
 		return err
 	}
+	limited, err := w.enforceDailyMessageLimit(ctx, full)
+	if err != nil {
+		return err
+	}
+	if limited {
+		return w.deleteEmail(ctx, full.ID)
+	}
 	body, protectedSubject, attachments, rejectReason, err := w.decryptVerifiedEmail(ctx, full)
 	if err != nil {
 		return err
@@ -711,6 +719,46 @@ func (w *Watcher) registerCorrespondents(ctx context.Context, msg emailMessage) 
 		}
 	}
 	return nil
+}
+
+func (w *Watcher) enforceDailyMessageLimit(ctx context.Context, msg emailMessage) (bool, error) {
+	if w.store == nil {
+		return false, nil
+	}
+	for _, from := range msg.From {
+		email := strings.ToLower(strings.TrimSpace(from.Email))
+		if email == "" {
+			continue
+		}
+		usage, err := w.store.CountInboundMessage(ctx, email, dailyMessageLimit, time.Now())
+		if err != nil {
+			return false, err
+		}
+		w.logf("correspondent daily usage counted: email=%s day=%s count=%d limit=%d allowed=%t", email, usage.Day, usage.Count, dailyMessageLimit, usage.Allowed)
+		if !usage.Allowed {
+			if err := w.sendRateLimitReply(ctx, from, usage); err != nil {
+				return false, err
+			}
+			w.logf("correspondent daily limit reply sent: email=%s day=%s count=%d limit=%d", email, usage.Day, usage.Count, dailyMessageLimit)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (w *Watcher) sendRateLimitReply(ctx context.Context, to emailAddress, usage correspondentDailyUsage) error {
+	body := fmt.Sprintf(strings.TrimSpace(`Hello,
+
+This address accepts up to %d messages per sender per UTC day.
+
+You have reached that limit for %s. Please try again tomorrow.
+
+Thanks.`), dailyMessageLimit, usage.Day)
+	htmlBody, err := formatReplyHTMLBody(body, emailMessage{}, "")
+	if err != nil {
+		return err
+	}
+	return w.sendEmail(ctx, []emailAddress{to}, "Daily message limit reached", body, htmlBody, nil, emailMessage{})
 }
 
 func (w *Watcher) sendProfileRequest(ctx context.Context, to emailAddress) error {

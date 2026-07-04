@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCorrespondentStoreRegistersNewSenderAndMarksProfileRequest(t *testing.T) {
@@ -84,6 +85,48 @@ func TestCorrespondentStoreUpdatesProfileFromEmailBody(t *testing.T) {
 	}
 	if timeZone != "America/New_York" {
 		t.Fatalf("time_zone = %q, want America/New_York", timeZone)
+	}
+}
+
+func TestCorrespondentStoreCountsDailyUsage(t *testing.T) {
+	ctx := context.Background()
+	store := openTestCorrespondentStore(t)
+	email := testAddress("sender", "mail.test")
+	now := time.Date(2026, 7, 4, 3, 0, 0, 0, time.UTC)
+
+	var usage correspondentDailyUsage
+	for i := 1; i <= 10; i++ {
+		var err error
+		usage, err = store.CountInboundMessage(ctx, email, 10, now)
+		if err != nil {
+			t.Fatalf("CountInboundMessage %d returned error: %v", i, err)
+		}
+		if !usage.Allowed {
+			t.Fatalf("message %d unexpectedly blocked: %#v", i, usage)
+		}
+		if usage.Count != i {
+			t.Fatalf("message %d count = %d", i, usage.Count)
+		}
+	}
+
+	usage, err := store.CountInboundMessage(ctx, email, 10, now)
+	if err != nil {
+		t.Fatalf("CountInboundMessage 11 returned error: %v", err)
+	}
+	if usage.Allowed {
+		t.Fatalf("message 11 allowed, want blocked")
+	}
+	if usage.Count != 11 {
+		t.Fatalf("message 11 count = %d", usage.Count)
+	}
+
+	nextDay := now.Add(24 * time.Hour)
+	usage, err = store.CountInboundMessage(ctx, email, 10, nextDay)
+	if err != nil {
+		t.Fatalf("next-day CountInboundMessage returned error: %v", err)
+	}
+	if !usage.Allowed || usage.Count != 1 {
+		t.Fatalf("next-day usage = %#v, want allowed count 1", usage)
 	}
 }
 
