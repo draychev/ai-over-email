@@ -75,6 +75,37 @@ func TestFinalOpenAIRequestPayloadOmitsTools(t *testing.T) {
 	if payload["_search_mode"] != "brave_function_final" {
 		t.Fatalf("_search_mode = %#v", payload["_search_mode"])
 	}
+	input, ok := payload["input"].([]map[string]any)
+	if !ok {
+		t.Fatalf("input type = %T", payload["input"])
+	}
+	if len(input) != 2 {
+		t.Fatalf("input length = %d, want 2: %#v", len(input), input)
+	}
+	instruction, _ := input[1]["content"].(string)
+	for _, want := range []string{"Do not output raw JSON", "Write the final outgoing email reply now"} {
+		if !strings.Contains(instruction, want) {
+			t.Fatalf("final instruction missing %q: %q", want, instruction)
+		}
+	}
+}
+
+func TestBraveSearchFollowupInputAddsProseInstruction(t *testing.T) {
+	input := []map[string]any{{"type": "function_call_output", "output": `{"query":"x"}`}}
+
+	got, ok := braveSearchFollowupInput(input, false).([]map[string]any)
+	if !ok {
+		t.Fatalf("followup input type mismatch")
+	}
+	if len(got) != 2 {
+		t.Fatalf("followup input length = %d, want 2", len(got))
+	}
+	instruction, _ := got[1]["content"].(string)
+	for _, want := range []string{"Use the web_search JSON results above only as source context", "Do not output raw JSON", "write the final email"} {
+		if !strings.Contains(instruction, want) {
+			t.Fatalf("followup instruction missing %q: %q", want, instruction)
+		}
+	}
 }
 
 func TestFormatBraveSearchResults(t *testing.T) {

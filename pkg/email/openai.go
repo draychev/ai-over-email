@@ -144,7 +144,7 @@ Email structure:
 			if i == maxBraveSearchRounds-1 {
 				decoded, err = c.sendOpenAIRequest(ctx, c.finalOpenAIRequestPayload(outputs, decoded.ID))
 			} else {
-				decoded, err = c.sendOpenAIRequest(ctx, c.openAIRequestPayload(outputs, decoded.ID))
+				decoded, err = c.sendOpenAIRequest(ctx, c.openAIRequestPayload(braveSearchFollowupInput(outputs, false), decoded.ID))
 			}
 			if err != nil {
 				return "", err
@@ -181,13 +181,31 @@ func (c *openAIClient) openAIRequestPayload(input any, previousResponseID string
 func (c *openAIClient) finalOpenAIRequestPayload(input any, previousResponseID string) map[string]any {
 	return map[string]any{
 		"model":                defaultOpenAIModel,
-		"input":                input,
+		"input":                braveSearchFollowupInput(input, true),
 		"previous_response_id": previousResponseID,
 		"reasoning": map[string]string{
 			"effort": "high",
 		},
 		"_search_mode": "brave_function_final",
 	}
+}
+
+func braveSearchFollowupInput(input any, final bool) any {
+	items, ok := input.([]map[string]any)
+	if !ok {
+		return input
+	}
+	result := make([]map[string]any, 0, len(items)+1)
+	result = append(result, items...)
+	instruction := "Use the web_search JSON results above only as source context. Do not output raw JSON, query objects, code fences, or tool payloads. Write the actual outgoing email reply in clear prose with relevant source links. If more current source context is essential, call web_search again; otherwise write the final email now."
+	if final {
+		instruction = "Use the web_search JSON results above only as source context. Do not output raw JSON, query objects, code fences, or tool payloads. Write the final outgoing email reply now in clear prose with relevant source links."
+	}
+	result = append(result, map[string]any{
+		"role":    "user",
+		"content": instruction,
+	})
+	return result
 }
 
 func (c *openAIClient) openAITools() ([]map[string]any, string, string) {
