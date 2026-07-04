@@ -22,7 +22,9 @@ const (
 
 func (w *Watcher) decryptVerifiedEmail(ctx context.Context, msg emailMessage) (string, string, []emailAttachment, string, error) {
 	raw := []byte(nil)
-	if msg.BlobID != "" {
+	if len(msg.Raw) > 0 {
+		raw = msg.Raw
+	} else if msg.BlobID != "" {
 		var err error
 		raw, err = w.client.Download(ctx, w.accountID, msg.BlobID, "message.eml", "message/rfc822")
 		if err != nil {

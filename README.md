@@ -2,13 +2,16 @@
 
 This service watches a Fastmail mailbox with JMAP, drafts replies through the OpenAI Responses API, sends the replies through Fastmail JMAP, and deletes processed inbound messages.
 
-The implementation was incorporated from the working `pegasus-ai` service, with personal mailbox details moved out of committed source and into local credentials.
+The mailbox persona may be called Pegasus as an homage to Pegasus Mail, the long-running email client from `pmail.com`. Pegasus Mail and the Mercury Mail Transport System can make a practical human-facing gateway for AI-over-email workflows; if you use them, support the project through the official manuals, support, or licensing options where applicable.
 
 ## Behavior
 
 - Uses Fastmail JMAP EventSource for immediate mailbox state changes.
 - Runs a startup and periodic inbox scan every 5 minutes so queued messages and missed notifications are still processed.
 - Skips self-sent and automated/no-reply messages to avoid reply loops.
+- Keeps a local SQLite correspondent profile database at `.tmp/correspondents.sqlite3`.
+- Records each sender's email address, display name, derived email-header UTC offset when available, and whether a profile setup request was sent.
+- Sends a one-time setup email to new correspondents asking for ZIP code and time zone when either value is missing.
 - Sends accepted replies as HTML email with a plain-text fallback.
 - Preserves normal reply headers, quotes the original message, and reattaches original attachments.
 - Sends image attachments to the model as image inputs and other attachments as file inputs when available.

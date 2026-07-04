@@ -20,6 +20,7 @@ const (
 type Config struct {
 	CredentialsPath string
 	SettingsPath    string
+	DatabasePath    string
 	Output          io.Writer
 	LogOutput       io.Writer
 }
@@ -30,6 +31,7 @@ type Watcher struct {
 	settings Settings
 	client   *jmapClient
 	openai   *openAIClient
+	store    *correspondentStore
 
 	accountID  string
 	inboxID    string
@@ -61,6 +63,7 @@ type emailMessage struct {
 	BodyValues  map[string]emailBodyValue `json:"bodyValues"`
 	MessageID   []string                  `json:"messageId"`
 	References  []string                  `json:"references"`
+	Raw         []byte                    `json:"-"`
 }
 
 type emailAddress struct {
@@ -146,12 +149,19 @@ func NewWatcher(config Config) (*Watcher, error) {
 	}
 	logf(config.LogOutput, "settings loaded: jmap_session_endpoint=%s legacy_basic_endpoint=%s", settings.JMAPSessionEndpoint, settings.JMAPLegacySessionEndpoint)
 
+	store, err := openCorrespondentStore(config.DatabasePath)
+	if err != nil {
+		return nil, err
+	}
+	logf(config.LogOutput, "correspondent database opened: path=%s", config.DatabasePath)
+
 	return &Watcher{
 		config:   config,
 		creds:    creds,
 		settings: settings,
 		client:   newJMAPClient(creds, config.LogOutput),
 		openai:   newOpenAIClient(creds.OpenAIAPIToken, creds.PublicEmail, creds.BraveSearchAPIToken, config.LogOutput),
+		store:    store,
 		seen:     make(map[string]struct{}),
 	}, nil
 }
@@ -591,6 +601,9 @@ func (w *Watcher) maybeAutoReply(ctx context.Context, msg emailMessage) error {
 	if err != nil {
 		return err
 	}
+	if err := w.registerCorrespondents(ctx, full); err != nil {
+		return err
+	}
 	body, protectedSubject, attachments, rejectReason, err := w.decryptVerifiedEmail(ctx, full)
 	if err != nil {
 		return err
@@ -608,6 +621,9 @@ func (w *Watcher) maybeAutoReply(ctx context.Context, msg emailMessage) error {
 	}
 	if strings.TrimSpace(body) == "" {
 		body = full.Subject
+	}
+	if err := w.updateCorrespondentProfiles(ctx, full, body); err != nil {
+		return err
 	}
 
 	w.logf("auto-reply calling OpenAI: id=%s body_bytes=%d attachments=%d", msg.ID, len(body), len(attachments))
@@ -652,13 +668,88 @@ func (w *Watcher) fetchEmailForReply(ctx context.Context, id string) (emailMessa
 			if len(got.List) == 0 {
 				return emailMessage{}, fmt.Errorf("message %s not found", id)
 			}
-			return got.List[0], nil
+			msg := got.List[0]
+			if msg.BlobID != "" {
+				raw, err := w.client.Download(ctx, w.accountID, msg.BlobID, "message.eml", "message/rfc822")
+				if err != nil {
+					return emailMessage{}, err
+				}
+				msg.Raw = raw
+			}
+			return msg, nil
 		case "error":
 			return emailMessage{}, fmt.Errorf("JMAP fetch email error: %s", string(args))
 		}
 	}
 
 	return emailMessage{}, fmt.Errorf("JMAP fetch email returned no Email/get response")
+}
+
+func (w *Watcher) registerCorrespondents(ctx context.Context, msg emailMessage) error {
+	if w.store == nil {
+		return nil
+	}
+	timezone := deriveTimezoneFromEmailHeaders(msg.Raw)
+	for _, from := range msg.From {
+		email := strings.ToLower(strings.TrimSpace(from.Email))
+		if email == "" {
+			continue
+		}
+		registered, err := w.store.Register(ctx, email, strings.TrimSpace(from.Name), timezone)
+		if err != nil {
+			return err
+		}
+		w.logf("correspondent registered: email=%s new=%t zip_present=%t timezone_present=%t profile_request_needed=%t", email, registered.New, registered.ZipPresent, registered.TimezonePresent, registered.ProfileRequestNeeded)
+		if registered.ProfileRequestNeeded {
+			if err := w.sendProfileRequest(ctx, from); err != nil {
+				return err
+			}
+			if err := w.store.MarkProfileRequestSent(ctx, email); err != nil {
+				return err
+			}
+			w.logf("correspondent profile request sent: email=%s", email)
+		}
+	}
+	return nil
+}
+
+func (w *Watcher) sendProfileRequest(ctx context.Context, to emailAddress) error {
+	body := strings.TrimSpace(`Hello,
+
+I keep a small local profile for people who email this address so replies can handle local context correctly.
+
+Could you reply with:
+
+- Your ZIP code
+- Your time zone, for example America/New_York or UTC-05:00
+
+Thanks.`)
+	htmlBody, err := formatReplyHTMLBody(body, emailMessage{}, "")
+	if err != nil {
+		return err
+	}
+	return w.sendEmail(ctx, []emailAddress{to}, "A quick setup question", body, htmlBody, nil, emailMessage{})
+}
+
+func (w *Watcher) updateCorrespondentProfiles(ctx context.Context, msg emailMessage, body string) error {
+	if w.store == nil {
+		return nil
+	}
+	update := extractCorrespondentProfileUpdate(body)
+	if update.ZipCode == "" && update.TimeZone == "" {
+		return nil
+	}
+	for _, from := range msg.From {
+		email := strings.ToLower(strings.TrimSpace(from.Email))
+		if email == "" {
+			continue
+		}
+		if err := w.store.UpdateProfile(ctx, email, update); err != nil {
+			return err
+		}
+		w.logf("correspondent profile updated from email body: email=%s zip_present=%t timezone_present=%t", email, update.ZipCode != "", update.TimeZone != "")
+	}
+	return nil
 }
 
 func (w *Watcher) sendReply(ctx context.Context, original emailMessage, body string, originalBody string, attachments []emailAttachment) error {
@@ -677,7 +768,10 @@ func (w *Watcher) sendReply(ctx context.Context, original emailMessage, body str
 	if err != nil {
 		return err
 	}
+	return w.sendEmail(ctx, to, subject, replyBody, replyHTMLBody, replyAttachments, original)
+}
 
+func (w *Watcher) sendEmail(ctx context.Context, to []emailAddress, subject string, textBody string, htmlBody string, attachments []map[string]any, original emailMessage) error {
 	createEmail := map[string]any{
 		"from":     []emailAddress{{Email: w.creds.Username}},
 		"to":       to,
@@ -685,14 +779,14 @@ func (w *Watcher) sendReply(ctx context.Context, original emailMessage, body str
 		"textBody": []map[string]any{{"partId": "text", "type": "text/plain"}},
 		"htmlBody": []map[string]any{{"partId": "html", "type": "text/html"}},
 		"bodyValues": map[string]any{
-			"text": map[string]any{"charset": "utf-8", "value": replyBody},
-			"html": map[string]any{"charset": "utf-8", "value": replyHTMLBody},
+			"text": map[string]any{"charset": "utf-8", "value": textBody},
+			"html": map[string]any{"charset": "utf-8", "value": htmlBody},
 		},
 		"mailboxIds": map[string]bool{w.draftsID: true},
 		"keywords":   map[string]bool{"$draft": true},
 	}
-	if len(replyAttachments) > 0 {
-		createEmail["attachments"] = replyAttachments
+	if len(attachments) > 0 {
+		createEmail["attachments"] = attachments
 	}
 	if len(original.MessageID) > 0 {
 		createEmail["header:In-Reply-To:asMessageIds"] = original.MessageID

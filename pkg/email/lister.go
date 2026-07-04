@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -169,6 +170,9 @@ func normalizeConfig(config Config) Config {
 	}
 	if config.SettingsPath == "" {
 		config.SettingsPath = "EmailSettings.md"
+	}
+	if config.DatabasePath == "" {
+		config.DatabasePath = filepath.Join(".tmp", "correspondents.sqlite3")
 	}
 	if config.Output == nil {
 		config.Output = os.Stdout
