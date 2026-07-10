@@ -2,7 +2,7 @@
 
 run:
 	@mkdir -p .tmp
-	@go build -o .tmp/mailwatch ./cmd/mailwatch
+	@go build -o .tmp/mailwatch ./cmd
 	@.tmp/mailwatch
 
 list:
