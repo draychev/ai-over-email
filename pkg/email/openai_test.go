@@ -1,6 +1,7 @@
 package email
 
 import (
+	appconfig "ai-over-email/pkg/config"
 	"strings"
 	"testing"
 )
@@ -104,9 +105,19 @@ func TestOpenAIToolsUseBraveFunctionWithToken(t *testing.T) {
 func TestFinalOpenAIRequestPayloadOmitsTools(t *testing.T) {
 	client := &openAIClient{braveSearchToken: "token"}
 
-	payload := client.finalOpenAIRequestPayload([]map[string]any{{"type": "function_call_output"}}, "resp_1")
+	payload := client.finalOpenAIRequestPayload([]map[string]any{{"type": "function_call_output"}}, "resp_1", appconfig.OpenAIModelSettings{
+		Model:           "gpt-powerful",
+		ReasoningEffort: "medium",
+	})
 	if _, ok := payload["tools"]; ok {
 		t.Fatalf("final payload unexpectedly included tools: %#v", payload)
+	}
+	if payload["model"] != "gpt-powerful" {
+		t.Fatalf("model = %#v", payload["model"])
+	}
+	reasoning, ok := payload["reasoning"].(map[string]string)
+	if !ok || reasoning["effort"] != "medium" {
+		t.Fatalf("reasoning = %#v", payload["reasoning"])
 	}
 	if payload["previous_response_id"] != "resp_1" {
 		t.Fatalf("previous_response_id = %#v", payload["previous_response_id"])
@@ -126,6 +137,37 @@ func TestFinalOpenAIRequestPayloadOmitsTools(t *testing.T) {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("final instruction missing %q: %q", want, instruction)
 		}
+	}
+}
+
+func TestOpenAIRequestPayloadUsesConfiguredModelSettings(t *testing.T) {
+	client := &openAIClient{}
+
+	payload := client.openAIRequestPayload([]map[string]any{{"role": "user", "content": "hello"}}, "", appconfig.OpenAIModelSettings{
+		Model:           "gpt-powerful",
+		ReasoningEffort: "medium",
+	})
+
+	if payload["model"] != "gpt-powerful" {
+		t.Fatalf("model = %#v", payload["model"])
+	}
+	reasoning, ok := payload["reasoning"].(map[string]string)
+	if !ok || reasoning["effort"] != "medium" {
+		t.Fatalf("reasoning = %#v", payload["reasoning"])
+	}
+}
+
+func TestOpenAIRequestPayloadDefaultsModelSettings(t *testing.T) {
+	client := &openAIClient{}
+
+	payload := client.openAIRequestPayload([]map[string]any{{"role": "user", "content": "hello"}}, "", appconfig.OpenAIModelSettings{})
+
+	if payload["model"] != appconfig.DefaultOpenAIModel {
+		t.Fatalf("model = %#v", payload["model"])
+	}
+	reasoning, ok := payload["reasoning"].(map[string]string)
+	if !ok || reasoning["effort"] != appconfig.DefaultOpenAIReasoningEffort {
+		t.Fatalf("reasoning = %#v", payload["reasoning"])
 	}
 }
 

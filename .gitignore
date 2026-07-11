@@ -1,4 +1,5 @@
 .env
+config.json
 mcp.log
 package-lock.json
 creds.txt

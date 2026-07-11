@@ -20,7 +20,9 @@ The mailbox persona may be called Pegasus as an homage to Pegasus Mail, the long
 
 ## Local Configuration
 
-Runtime application config lives in tracked `config.json`. It contains non-secret service endpoints such as the Fastmail JMAP session URLs.
+Runtime application config lives in local `config.json`, which is ignored and must not be committed. Copy `config.example.json` to `config.json` and edit local values there.
+
+The `openai.powerful_senders` list can route selected sender addresses to `openai.powerful_model` with `openai.powerful_reasoning_effort`. Keep real sender addresses only in local `config.json`; use placeholders in the tracked example.
 
 Credentials are read from environment variables. For local development, copy `.env.example` to `.env` and put real values there. `.env` is ignored and must not be committed.
 

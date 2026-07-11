@@ -1,6 +1,7 @@
 package email
 
 import (
+	appconfig "ai-over-email/pkg/config"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -16,7 +17,6 @@ import (
 const (
 	openAIResponsesURL = "https://api.openai.com/v1/responses"
 	braveSearchURL     = "https://api.search.brave.com/res/v1/web/search"
-	defaultOpenAIModel = "gpt-5-nano"
 )
 
 type openAIClient struct {
@@ -86,10 +86,11 @@ func newOpenAIClient(token string, fromEmail string, braveSearchToken string, lo
 	}
 }
 
-func (c *openAIClient) AnswerEmail(ctx context.Context, subject string, body string, attachments []emailAttachment) (openAIAnswer, error) {
+func (c *openAIClient) AnswerEmail(ctx context.Context, subject string, body string, attachments []emailAttachment, settings appconfig.OpenAIModelSettings) (openAIAnswer, error) {
 	if c.token == "" {
 		return openAIAnswer{}, fmt.Errorf("OPENAI_API_TOKEN is not configured")
 	}
+	settings = normalizeOpenAIModelSettings(settings)
 
 	prompt := `You are composing an email reply.
 
@@ -137,7 +138,7 @@ Email structure:
 			"content": openAIUserContent(subject, body, attachments),
 		},
 	}
-	payload := c.openAIRequestPayload(input, "")
+	payload := c.openAIRequestPayload(input, "", settings)
 
 	decoded, err := c.sendOpenAIRequest(ctx, payload)
 	if err != nil {
@@ -160,9 +161,9 @@ Email structure:
 				return openAIAnswer{}, err
 			}
 			if i == maxBraveSearchRounds-1 {
-				decoded, err = c.sendOpenAIRequest(ctx, c.finalOpenAIRequestPayload(outputs, decoded.ID))
+				decoded, err = c.sendOpenAIRequest(ctx, c.finalOpenAIRequestPayload(outputs, decoded.ID, settings))
 			} else {
-				decoded, err = c.sendOpenAIRequest(ctx, c.openAIRequestPayload(braveSearchFollowupInput(outputs, false), decoded.ID))
+				decoded, err = c.sendOpenAIRequest(ctx, c.openAIRequestPayload(braveSearchFollowupInput(outputs, false), decoded.ID, settings))
 			}
 			if err != nil {
 				return openAIAnswer{}, err
@@ -176,7 +177,19 @@ Email structure:
 	if text == "" {
 		return openAIAnswer{}, fmt.Errorf("OpenAI response did not include output_text")
 	}
-	return openAIAnswer{Text: text, Model: defaultOpenAIModel, ToolsUsed: toolsUsed, Usage: usage}, nil
+	return openAIAnswer{Text: text, Model: settings.Model, ToolsUsed: toolsUsed, Usage: usage}, nil
+}
+
+func normalizeOpenAIModelSettings(settings appconfig.OpenAIModelSettings) appconfig.OpenAIModelSettings {
+	settings.Model = strings.TrimSpace(settings.Model)
+	settings.ReasoningEffort = strings.ToLower(strings.TrimSpace(settings.ReasoningEffort))
+	if settings.Model == "" {
+		settings.Model = appconfig.DefaultOpenAIModel
+	}
+	if settings.ReasoningEffort == "" {
+		settings.ReasoningEffort = appconfig.DefaultOpenAIReasoningEffort
+	}
+	return settings
 }
 
 func (u openAIUsage) add(other openAIUsage) openAIUsage {
@@ -189,15 +202,16 @@ func (u openAIUsage) add(other openAIUsage) openAIUsage {
 	}
 }
 
-func (c *openAIClient) openAIRequestPayload(input any, previousResponseID string) map[string]any {
+func (c *openAIClient) openAIRequestPayload(input any, previousResponseID string, settings appconfig.OpenAIModelSettings) map[string]any {
 	tools, toolChoice, searchMode := c.openAITools()
+	settings = normalizeOpenAIModelSettings(settings)
 	payload := map[string]any{
-		"model":       defaultOpenAIModel,
+		"model":       settings.Model,
 		"input":       input,
 		"tools":       tools,
 		"tool_choice": toolChoice,
 		"reasoning": map[string]string{
-			"effort": "high",
+			"effort": settings.ReasoningEffort,
 		},
 	}
 	if previousResponseID != "" {
@@ -208,13 +222,14 @@ func (c *openAIClient) openAIRequestPayload(input any, previousResponseID string
 	return payload
 }
 
-func (c *openAIClient) finalOpenAIRequestPayload(input any, previousResponseID string) map[string]any {
+func (c *openAIClient) finalOpenAIRequestPayload(input any, previousResponseID string, settings appconfig.OpenAIModelSettings) map[string]any {
+	settings = normalizeOpenAIModelSettings(settings)
 	return map[string]any{
-		"model":                defaultOpenAIModel,
+		"model":                settings.Model,
 		"input":                braveSearchFollowupInput(input, true),
 		"previous_response_id": previousResponseID,
 		"reasoning": map[string]string{
-			"effort": "high",
+			"effort": settings.ReasoningEffort,
 		},
 		"_search_mode": "brave_function_final",
 	}
@@ -283,7 +298,12 @@ func (c *openAIClient) sendOpenAIRequest(ctx context.Context, payload map[string
 	req.Header.Set("Accept", "application/json")
 
 	start := time.Now()
-	c.logf("OpenAI Responses request: model=%s reasoning_effort=high search_mode=%s bytes=%d", defaultOpenAIModel, searchMode, len(data))
+	model, _ := payload["model"].(string)
+	reasoningEffort := ""
+	if reasoning, ok := payload["reasoning"].(map[string]string); ok {
+		reasoningEffort = reasoning["effort"]
+	}
+	c.logf("OpenAI Responses request: model=%s reasoning_effort=%s search_mode=%s bytes=%d", model, reasoningEffort, searchMode, len(data))
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return openAIResponse{}, fmt.Errorf("OpenAI Responses request: %w", err)

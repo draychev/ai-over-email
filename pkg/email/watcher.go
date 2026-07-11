@@ -633,8 +633,9 @@ func (w *Watcher) maybeAutoReply(ctx context.Context, msg emailMessage) error {
 		return err
 	}
 
-	w.logf("auto-reply calling OpenAI: id=%s body_bytes=%d attachments=%d", msg.ID, len(body), len(attachments))
-	reply, err := w.openai.AnswerEmail(ctx, full.Subject, body, attachments)
+	modelSettings := w.appConfig.OpenAISettingsForSenders(senderEmails(full.From))
+	w.logf("auto-reply calling OpenAI: id=%s model=%s reasoning_effort=%s body_bytes=%d attachments=%d", msg.ID, modelSettings.Model, modelSettings.ReasoningEffort, len(body), len(attachments))
+	reply, err := w.openai.AnswerEmail(ctx, full.Subject, body, attachments, modelSettings)
 	if err != nil {
 		return err
 	}

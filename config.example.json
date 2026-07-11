@@ -1,0 +1,15 @@
+{
+  "jmap": {
+    "session_endpoint": "https://api.fastmail.com/jmap/session",
+    "legacy_basic_auth_session_endpoint": "https://jmap.fastmail.com/.well-known/jmap"
+  },
+  "openai": {
+    "default_model": "gpt-5-nano",
+    "default_reasoning_effort": "high",
+    "powerful_model": "gpt-5.6-sol",
+    "powerful_reasoning_effort": "medium",
+    "powerful_senders": [
+      "power-user@example.com"
+    ]
+  }
+}
