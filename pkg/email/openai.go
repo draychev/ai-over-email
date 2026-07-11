@@ -98,6 +98,8 @@ The entire interaction is happening over email:
 - The incoming user message is an email, not a chat turn.
 - Your output will be sent directly back as the email body.
 - Any images or files attached to the email are part of the user's request and should be considered alongside the written body.
+- Read the entire email carefully before answering, including forwarded messages, quoted replies, previous thread history, inline headers, signatures, and attachment text or images.
+- Treat forwarded or quoted messages as important context for the sender's current question, not as boilerplate to ignore. If the current note asks about "this", "below", "forwarded", "attached", or similar references, resolve that from the forwarded body, prior thread, and attachments.
 - Write a complete, polished email response.
 - Use Markdown-style headings, lists, links, and emphasis when useful; the delivered email is rendered as HTML with a plain-text fallback.
 - When tabular comparison is useful, use a simple standard table so the delivered email renders it as an HTML table. Never leave table content as raw pipe-delimited text in the email body.
@@ -108,6 +110,7 @@ The entire interaction is happening over email:
 Research and reasoning expectations:
 - Treat the sender's email as a serious request from a real person.
 - Infer what the sender is asking, including implicit context and likely intent.
+- Reconstruct the relevant situation from the full email body and thread context before deciding what to answer.
 - Take the time needed to produce a rigorous answer.
 - Use web search for current facts, sources, standards, dates, prices, laws, technical details, papers, or anything that may have changed.
 - Prefer primary sources and reputable references. If sources disagree, explain the disagreement.
@@ -392,7 +395,7 @@ func (c *openAIClient) braveSearch(ctx context.Context, query string, count int)
 func openAIUserContent(subject string, body string, attachments []emailAttachment) []map[string]any {
 	content := []map[string]any{{
 		"type": "input_text",
-		"text": fmt.Sprintf("Incoming email subject for context only: %s\n\nIncoming email body:\n%s\n\nAttachments: %s\n\nWrite the outgoing email reply now. Do not copy or restate the subject line in the reply body unless the sender explicitly asks about the subject text.", subject, body, attachmentSummary(attachments)),
+		"text": fmt.Sprintf("Incoming email subject for context only: %s\n\nIncoming email body, including any forwarded message, quoted previous thread, inline headers, and sender comments:\n%s\n\nAttachments: %s\n\nBefore writing the reply, read and use the full body above, including forwarded or quoted material and prior thread context, to understand what the sender is asking. Then write the outgoing email reply now. Do not copy or restate the subject line in the reply body unless the sender explicitly asks about the subject text.", subject, body, attachmentSummary(attachments)),
 	}}
 	for i, attachment := range attachments {
 		name := attachmentName(attachment)

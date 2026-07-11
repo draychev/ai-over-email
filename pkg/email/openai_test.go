@@ -73,8 +73,27 @@ func TestOpenAIUserContentTreatsSubjectAsContextOnly(t *testing.T) {
 			t.Fatalf("user content missing %q: %q", want, text)
 		}
 	}
-	if !strings.Contains(text, "Incoming email body:\n\n") {
+	if !strings.Contains(text, "Incoming email body, including any forwarded message") {
 		t.Fatalf("empty body was not kept separate from subject: %q", text)
+	}
+}
+
+func TestOpenAIUserContentEmphasizesForwardedAndThreadContext(t *testing.T) {
+	content := openAIUserContent("Fwd: please review", "Please answer this.\n\n---------- Forwarded message ---------\nImportant forwarded context.", nil)
+
+	text, _ := content[0]["text"].(string)
+	for _, want := range []string{
+		"including any forwarded message, quoted previous thread",
+		"read and use the full body above",
+		"forwarded or quoted material",
+		"prior thread context",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("user content missing %q: %q", want, text)
+		}
+	}
+	if !strings.Contains(text, "Important forwarded context.") {
+		t.Fatalf("user content did not include forwarded body: %q", text)
 	}
 }
 
