@@ -1,4 +1,4 @@
-.PHONY: run run-usenet list test
+.PHONY: run run-usenet list mcp test
 
 run:
 	@mkdir -p .tmp
@@ -12,6 +12,9 @@ run-usenet:
 
 list:
 	@go run ./cmd/maillist
+
+mcp:
+	@go run ./cmd/fastmail-mcp
 
 test:
 	@go test ./...

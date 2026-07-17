@@ -4,6 +4,8 @@ This service watches a Fastmail mailbox with JMAP, drafts replies through the Op
 
 It can also run a second agent loop that watches a TLS NNTP newsgroup, sends posts and thread context to the same model pipeline, and posts Usenet follow-ups.
 
+The same Fastmail JMAP layer can also be exposed as a local stdio MCP server for other agents and clients.
+
 The mailbox persona may be called Pegasus as an homage to Pegasus Mail, the long-running email client from `pmail.com`. Pegasus Mail and the Mercury Mail Transport System can make a practical human-facing gateway for AI-over-email workflows; if you use them, support the project through the official manuals, support, or licensing options where applicable.
 
 ## Behavior
@@ -52,9 +54,26 @@ Keep personal addresses, credentials, API keys, access tokens, refresh tokens, a
 ```sh
 make test
 make list
+make mcp
 make run
 make run-usenet
 ```
+
+## Fastmail MCP
+
+Run a local stdio MCP server that exposes read-only Fastmail tools backed by the existing JMAP client:
+
+```sh
+make mcp
+```
+
+Current tools:
+
+- `list_mailboxes`
+- `search_messages`
+- `get_message`
+
+The MCP server reads the same local `.env` and `config.json` files as the watcher and mail listing commands.
 
 ## PGP Policy
 
