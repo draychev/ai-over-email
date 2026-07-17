@@ -72,7 +72,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 	if interval <= 0 {
 		interval = time.Minute
 	}
-	w.logf("usenetwatch starting: host=%s port=%d group=%s state=%s poll_interval=%s", w.usenet.Host, w.usenet.Port, w.usenet.Group, w.usenet.StatePath, interval)
+	w.logf("usenetwatch starting: host=%s port=%d security=%s group=%s state=%s poll_interval=%s", w.usenet.Host, w.usenet.Port, w.usenet.Security, w.usenet.Group, w.usenet.StatePath, interval)
 	if err := w.Poll(ctx); err != nil {
 		w.logf("initial poll failed: %v", err)
 	}
@@ -95,7 +95,7 @@ func (w *Watcher) Poll(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	client, err := dialNNTP(w.usenet.Host, w.usenet.Port, w.usenet.TLSServerName, w.usenet.TLSCertSHA256, 30*time.Second)
+	client, err := dialNNTP(w.usenet.Host, w.usenet.Port, w.usenet.Security, w.usenet.TLSServerName, w.usenet.TLSCertSHA256, 30*time.Second)
 	if err != nil {
 		return err
 	}

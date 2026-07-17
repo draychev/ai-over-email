@@ -41,7 +41,24 @@ type groupStatus struct {
 	Name  string
 }
 
-func dialNNTP(host string, port int, serverName string, certSHA256 string, timeout time.Duration) (*nntpClient, error) {
+func dialNNTP(host string, port int, security string, serverName string, certSHA256 string, timeout time.Duration) (*nntpClient, error) {
+	if security == "none" {
+		return dialPlainNNTP(host, port, timeout)
+	}
+	return dialTLSNNTP(host, port, serverName, certSHA256, timeout)
+}
+
+func dialPlainNNTP(host string, port int, timeout time.Duration) (*nntpClient, error) {
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	dialer := &net.Dialer{Timeout: timeout}
+	conn, err := dialer.Dial("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("connect NNTP: %w", err)
+	}
+	return newNNTPClient(conn)
+}
+
+func dialTLSNNTP(host string, port int, serverName string, certSHA256 string, timeout time.Duration) (*nntpClient, error) {
 	if serverName == "" {
 		serverName = host
 	}
@@ -70,6 +87,10 @@ func dialNNTP(host string, port int, serverName string, certSHA256 string, timeo
 	if err != nil {
 		return nil, fmt.Errorf("connect NNTP TLS: %w", err)
 	}
+	return newNNTPClient(conn)
+}
+
+func newNNTPClient(conn net.Conn) (*nntpClient, error) {
 	client := &nntpClient{conn: conn, text: textproto.NewConn(conn)}
 	code, line, err := client.readCodeLine()
 	if err != nil {

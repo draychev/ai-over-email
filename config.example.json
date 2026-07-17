@@ -13,12 +13,13 @@
     ]
   },
   "usenet": {
-    "host": "bandido",
-    "port": 563,
-    "tls_server_name": "bandido.openbsd.amsterdam",
-    "tls_cert_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "host": "46.23.94.140",
+    "port": 119,
+    "security": "none",
+    "tls_server_name": "",
+    "tls_cert_sha256": "",
     "group": "misc.pegasus",
-    "poll_interval": "1m",
+    "poll_interval": "5s",
     "state_path": ".tmp/usenetwatch-state.json",
     "from_name": "Pegasus AI",
     "from_address": "pegasus-ai@example.com",

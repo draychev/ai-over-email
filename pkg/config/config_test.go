@@ -122,11 +122,55 @@ func TestLoadAcceptsUsenetConfig(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 	usenet := config.Usenet.Normalized()
-	if usenet.Port != 563 || usenet.Group != "misc.pegasus" || usenet.PollInterval != "1m" {
+	if usenet.Port != 563 || usenet.Security != "tls" || usenet.Group != "misc.pegasus" || usenet.PollInterval != "1m" {
 		t.Fatalf("usenet config = %#v", usenet)
 	}
 	if usenet.TLSCertSHA256 != "4fcf365ced247c7d4c57e2224f6b15d143c0ad1357dc3a2b5981ca58c2427b31" {
 		t.Fatalf("TLSCertSHA256 = %q", usenet.TLSCertSHA256)
+	}
+}
+
+func TestLoadAcceptsPlainUsenetConfig(t *testing.T) {
+	path := writeTempFile(t, `{
+  "jmap": {
+    "session_endpoint": "https://api.example/session",
+    "legacy_basic_auth_session_endpoint": "https://legacy.example/jmap"
+  },
+  "usenet": {
+    "host": "46.23.94.140",
+    "port": 119,
+    "security": "none",
+    "group": "misc.pegasus",
+    "poll_interval": "5s"
+  }
+}`)
+
+	config, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	usenet := config.Usenet.Normalized()
+	if usenet.Port != 119 || usenet.Security != "none" || usenet.PollInterval != "5s" {
+		t.Fatalf("usenet config = %#v", usenet)
+	}
+}
+
+func TestLoadRejectsInvalidUsenetSecurity(t *testing.T) {
+	path := writeTempFile(t, `{
+  "jmap": {
+    "session_endpoint": "https://api.example/session",
+    "legacy_basic_auth_session_endpoint": "https://legacy.example/jmap"
+  },
+  "usenet": {
+    "host": "news.example",
+    "security": "starttls",
+    "group": "misc.pegasus"
+  }
+}`)
+
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "usenet.security") {
+		t.Fatalf("Load error = %v, want security validation error", err)
 	}
 }
 

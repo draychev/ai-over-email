@@ -27,7 +27,7 @@ Runtime application config lives in local `config.json`, which is ignored and mu
 
 The `openai.powerful_senders` list can route selected sender addresses to `openai.powerful_model` with `openai.powerful_reasoning_effort`. Keep real sender addresses only in local `config.json`; use placeholders in the tracked example.
 
-The `usenet` section configures the separate NNTP watcher. Use `tls_cert_sha256` to explicitly trust a self-signed server certificate by fingerprint rather than disabling TLS verification.
+The `usenet` section configures the separate NNTP watcher. Set `security` to `tls` for implicit TLS on port 563, or `none` for authenticated plaintext NNTP on port 119. For self-signed TLS servers, use `tls_cert_sha256` to explicitly trust the certificate by fingerprint rather than disabling TLS verification.
 
 Credentials are read from environment variables. For local development, copy `.env.example` to `.env` and put real values there. `.env` is ignored and must not be committed.
 

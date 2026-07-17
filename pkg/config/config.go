@@ -42,6 +42,7 @@ type OpenAIModelSettings struct {
 type UsenetConfig struct {
 	Host              string `json:"host"`
 	Port              int    `json:"port"`
+	Security          string `json:"security"`
 	TLSServerName     string `json:"tls_server_name"`
 	TLSCertSHA256     string `json:"tls_cert_sha256"`
 	Group             string `json:"group"`
@@ -105,6 +106,13 @@ func (cfg ConfigStruct) Validate() error {
 		if cfg.Usenet.Port < 0 || cfg.Usenet.Port > 65535 {
 			return fmt.Errorf("config field usenet.port must be between 0 and 65535")
 		}
+		if cfg.Usenet.Security != "" {
+			switch strings.ToLower(strings.TrimSpace(cfg.Usenet.Security)) {
+			case "tls", "none":
+			default:
+				return fmt.Errorf("config field usenet.security must be tls or none")
+			}
+		}
 		if strings.TrimSpace(cfg.Usenet.Group) == "" {
 			return fmt.Errorf("config field usenet.group is required when usenet is configured")
 		}
@@ -127,6 +135,7 @@ func (cfg ConfigStruct) Validate() error {
 
 func (cfg UsenetConfig) Normalized() UsenetConfig {
 	cfg.Host = strings.TrimSpace(cfg.Host)
+	cfg.Security = strings.ToLower(strings.TrimSpace(cfg.Security))
 	cfg.TLSServerName = strings.TrimSpace(cfg.TLSServerName)
 	cfg.TLSCertSHA256 = normalizeFingerprint(cfg.TLSCertSHA256)
 	cfg.Group = strings.TrimSpace(cfg.Group)
@@ -135,7 +144,18 @@ func (cfg UsenetConfig) Normalized() UsenetConfig {
 	cfg.FromName = strings.TrimSpace(cfg.FromName)
 	cfg.FromAddress = strings.TrimSpace(cfg.FromAddress)
 	if cfg.Port == 0 {
-		cfg.Port = 563
+		if cfg.Security == "none" {
+			cfg.Port = 119
+		} else {
+			cfg.Port = 563
+		}
+	}
+	if cfg.Security == "" {
+		if cfg.Port == 119 && cfg.TLSServerName == "" && cfg.TLSCertSHA256 == "" {
+			cfg.Security = "none"
+		} else {
+			cfg.Security = "tls"
+		}
 	}
 	if cfg.PollInterval == "" {
 		cfg.PollInterval = "1m"
