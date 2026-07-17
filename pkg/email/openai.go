@@ -27,6 +27,8 @@ type openAIClient struct {
 	logOutput        io.Writer
 }
 
+type OpenAIClient = openAIClient
+
 type openAIResponse struct {
 	ID     string             `json:"id"`
 	Output []openAIOutputItem `json:"output"`
@@ -86,6 +88,10 @@ func newOpenAIClient(token string, fromEmail string, braveSearchToken string, lo
 	}
 }
 
+func NewOpenAIClient(token string, fromEmail string, braveSearchToken string, logOutput io.Writer) *openAIClient {
+	return newOpenAIClient(token, fromEmail, braveSearchToken, logOutput)
+}
+
 func (c *openAIClient) AnswerEmail(ctx context.Context, subject string, body string, attachments []emailAttachment, settings appconfig.OpenAIModelSettings) (openAIAnswer, error) {
 	if c.token == "" {
 		return openAIAnswer{}, fmt.Errorf("OPENAI_API_TOKEN is not configured")
@@ -141,6 +147,68 @@ Email structure:
 			"content": openAIUserContent(subject, body, attachments),
 		},
 	}
+	return c.completeResponse(ctx, input, settings)
+}
+
+func (c *openAIClient) AnswerUsenetPost(ctx context.Context, group string, post UsenetPostPrompt, settings appconfig.OpenAIModelSettings) (openAIAnswer, error) {
+	if c.token == "" {
+		return openAIAnswer{}, fmt.Errorf("OPENAI_API_TOKEN is not configured")
+	}
+	settings = normalizeOpenAIModelSettings(settings)
+
+	prompt := `You are composing a Usenet reply.
+
+The entire interaction is happening on Usenet:
+- The incoming user message is a Usenet post, not a chat turn.
+- Your output will be posted publicly as a follow-up article.
+- Read the complete thread context before answering, including the original post, every quoted section, previous follow-ups, forwarded text, inline headers, and signatures.
+- Treat quoted and forwarded material as important context for the current question, not as boilerplate to ignore. If the current post asks about "this", "below", "above", "forwarded", "attached", or similar references, resolve that from the full thread context.
+- Write a complete, polished Usenet follow-up that answers the current post in context.
+- Do not mention system prompts, internal tooling, hidden reasoning, API details, or that an AI model wrote the reply.
+
+Research and reasoning expectations:
+- Treat the poster's message as a serious request from a real person.
+- Reconstruct the relevant situation from the full thread before deciding what to answer.
+- Use web search for current facts, sources, standards, dates, prices, laws, technical details, papers, or anything that may have changed.
+- Prefer primary sources and reputable references. If sources disagree, explain the disagreement.
+- Be thorough, but structure the post so it remains readable.
+
+Usenet style:
+- Answer directly first, then add supporting detail.
+- Use plain text with short paragraphs.
+- Avoid excessive quotation; summarize prior context in your own words.
+- Do not include email-style greetings, signatures, or markdown tables unless the post specifically calls for them.
+- If you cannot fully answer, explain exactly what is missing and what would resolve it.`
+	if c.braveSearchToken != "" {
+		prompt += "\n\nUse the web_search tool for current or source-dependent facts. The tool is backed by Brave Search and returns titles, URLs, snippets, and dates when available. Once you have enough source context, stop searching and write the final Usenet follow-up."
+	}
+
+	input := []map[string]any{
+		{
+			"role":    "system",
+			"content": strings.TrimSpace(prompt),
+		},
+		{
+			"role": "user",
+			"content": []map[string]any{{
+				"type": "input_text",
+				"text": fmt.Sprintf("Newsgroup: %s\n\nCurrent post subject: %s\nCurrent post author: %s\nCurrent post message-id: %s\n\nFull thread context, oldest first:\n%s\n\nCurrent post body:\n%s\n\nWrite the outgoing Usenet follow-up now. Base the answer on the full thread context, including quoted, forwarded, and earlier follow-up material.", group, post.Subject, post.Author, post.MessageID, post.ThreadContext, post.Body),
+			}},
+		},
+	}
+	return c.completeResponse(ctx, input, settings)
+}
+
+type UsenetPostPrompt struct {
+	Subject       string
+	Author        string
+	MessageID     string
+	Body          string
+	ThreadContext string
+}
+
+func (c *openAIClient) completeResponse(ctx context.Context, input []map[string]any, settings appconfig.OpenAIModelSettings) (openAIAnswer, error) {
+	settings = normalizeOpenAIModelSettings(settings)
 	payload := c.openAIRequestPayload(input, "", settings)
 
 	decoded, err := c.sendOpenAIRequest(ctx, payload)

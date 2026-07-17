@@ -2,6 +2,8 @@
 
 This service watches a Fastmail mailbox with JMAP, drafts replies through the OpenAI Responses API, sends the replies through Fastmail JMAP, and deletes processed inbound messages.
 
+It can also run a second agent loop that watches a TLS NNTP newsgroup, sends posts and thread context to the same model pipeline, and posts Usenet follow-ups.
+
 The mailbox persona may be called Pegasus as an homage to Pegasus Mail, the long-running email client from `pmail.com`. Pegasus Mail and the Mercury Mail Transport System can make a practical human-facing gateway for AI-over-email workflows; if you use them, support the project through the official manuals, support, or licensing options where applicable.
 
 ## Behavior
@@ -17,12 +19,15 @@ The mailbox persona may be called Pegasus as an homage to Pegasus Mail, the long
 - Preserves normal reply headers, quotes the original message, and reattaches original attachments.
 - Sends image attachments to the model as image inputs and other attachments as file inputs when available.
 - Requires OpenPGP encrypted and signed mail unless the sender is explicitly allowlisted in local credentials.
+- Can watch `misc.pegasus` over NNTP/TLS as a separate Usenet responder service, preserving `References` and `In-Reply-To` headers when it posts follow-ups.
 
 ## Local Configuration
 
 Runtime application config lives in local `config.json`, which is ignored and must not be committed. Copy `config.example.json` to `config.json` and edit local values there.
 
 The `openai.powerful_senders` list can route selected sender addresses to `openai.powerful_model` with `openai.powerful_reasoning_effort`. Keep real sender addresses only in local `config.json`; use placeholders in the tracked example.
+
+The `usenet` section configures the separate NNTP watcher. Use `tls_cert_sha256` to explicitly trust a self-signed server certificate by fingerprint rather than disabling TLS verification.
 
 Credentials are read from environment variables. For local development, copy `.env.example` to `.env` and put real values there. `.env` is ignored and must not be committed.
 
@@ -36,6 +41,8 @@ AI_OVER_EMAIL_BRAVE_API_KEY=<Brave Search API token, optional; enables local Bra
 AI_OVER_EMAIL_MAILBOX=<mailbox name, optional; defaults to inbox>
 AI_OVER_EMAIL_PUBLIC_EMAIL=<recipient address for PGP instructions, optional; defaults to AI_OVER_EMAIL_USERNAME>
 AI_OVER_EMAIL_PLAINTEXT_ALLOWLIST=<comma-separated sender addresses allowed to send unencrypted mail>
+AI_OVER_USENET_USERNAME=<NNTP username for the Usenet watcher>
+AI_OVER_USENET_PASSWORD=<NNTP password for the Usenet watcher>
 ```
 
 Keep personal addresses, credentials, API keys, access tokens, refresh tokens, and other secrets only in local untracked files.
@@ -46,6 +53,7 @@ Keep personal addresses, credentials, API keys, access tokens, refresh tokens, a
 make test
 make list
 make run
+make run-usenet
 ```
 
 ## PGP Policy
@@ -60,6 +68,7 @@ The repo-tracked user service unit is:
 
 ```text
 systemd/ai-over-email-mailwatch.service
+systemd/ai-over-email-usenetwatch.service
 ```
 
 After changing the unit file:
@@ -67,6 +76,7 @@ After changing the unit file:
 ```sh
 systemctl --user daemon-reload
 systemctl --user restart ai-over-email-mailwatch.service
+systemctl --user restart ai-over-email-usenetwatch.service
 ```
 
 The unit reads production credentials from `%h/.config/ai-over-email/env`. Create that file with the same variable names shown in `.env.example` and restrict it with `chmod 600`.

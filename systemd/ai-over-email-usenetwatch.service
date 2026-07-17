@@ -1,0 +1,19 @@
+[Unit]
+Description=AI over Usenet misc.pegasus responder
+Documentation=file:/home/de/src/ai-over-email/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/de/src/ai-over-email
+EnvironmentFile=%h/.config/ai-over-email/env
+Environment=PATH=/home/de/go/go1.26.4/bin:/home/de/.local/bin:/home/de/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+ExecStart=/usr/bin/make run-usenet
+Restart=always
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

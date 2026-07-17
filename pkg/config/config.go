@@ -18,6 +18,7 @@ const (
 type ConfigStruct struct {
 	JMAP   JMAPConfig   `json:"jmap"`
 	OpenAI OpenAIConfig `json:"openai"`
+	Usenet UsenetConfig `json:"usenet"`
 }
 
 type JMAPConfig struct {
@@ -36,6 +37,19 @@ type OpenAIConfig struct {
 type OpenAIModelSettings struct {
 	Model           string
 	ReasoningEffort string
+}
+
+type UsenetConfig struct {
+	Host              string `json:"host"`
+	Port              int    `json:"port"`
+	TLSServerName     string `json:"tls_server_name"`
+	TLSCertSHA256     string `json:"tls_cert_sha256"`
+	Group             string `json:"group"`
+	PollInterval      string `json:"poll_interval"`
+	StatePath         string `json:"state_path"`
+	FromName          string `json:"from_name"`
+	FromAddress       string `json:"from_address"`
+	MaxThreadArticles int    `json:"max_thread_articles"`
 }
 
 func Load(path string) (ConfigStruct, error) {
@@ -84,7 +98,61 @@ func (cfg ConfigStruct) Validate() error {
 			return fmt.Errorf("config field openai.powerful_senders contains invalid email %q: %w", sender, err)
 		}
 	}
+	if cfg.Usenet.Host != "" || cfg.Usenet.Group != "" {
+		if strings.TrimSpace(cfg.Usenet.Host) == "" {
+			return fmt.Errorf("config field usenet.host is required when usenet is configured")
+		}
+		if cfg.Usenet.Port < 0 || cfg.Usenet.Port > 65535 {
+			return fmt.Errorf("config field usenet.port must be between 0 and 65535")
+		}
+		if strings.TrimSpace(cfg.Usenet.Group) == "" {
+			return fmt.Errorf("config field usenet.group is required when usenet is configured")
+		}
+		if cfg.Usenet.MaxThreadArticles < 0 {
+			return fmt.Errorf("config field usenet.max_thread_articles must be non-negative")
+		}
+		if cfg.Usenet.FromAddress != "" {
+			if _, err := parseConfigEmail(cfg.Usenet.FromAddress); err != nil {
+				return fmt.Errorf("config field usenet.from_address contains invalid email %q: %w", cfg.Usenet.FromAddress, err)
+			}
+		}
+		if cfg.Usenet.TLSCertSHA256 != "" {
+			if err := validateSHA256Fingerprint("usenet.tls_cert_sha256", cfg.Usenet.TLSCertSHA256); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func (cfg UsenetConfig) Normalized() UsenetConfig {
+	cfg.Host = strings.TrimSpace(cfg.Host)
+	cfg.TLSServerName = strings.TrimSpace(cfg.TLSServerName)
+	cfg.TLSCertSHA256 = normalizeFingerprint(cfg.TLSCertSHA256)
+	cfg.Group = strings.TrimSpace(cfg.Group)
+	cfg.PollInterval = strings.TrimSpace(cfg.PollInterval)
+	cfg.StatePath = strings.TrimSpace(cfg.StatePath)
+	cfg.FromName = strings.TrimSpace(cfg.FromName)
+	cfg.FromAddress = strings.TrimSpace(cfg.FromAddress)
+	if cfg.Port == 0 {
+		cfg.Port = 563
+	}
+	if cfg.PollInterval == "" {
+		cfg.PollInterval = "1m"
+	}
+	if cfg.StatePath == "" {
+		cfg.StatePath = ".tmp/usenetwatch-state.json"
+	}
+	if cfg.FromName == "" {
+		cfg.FromName = "Pegasus AI"
+	}
+	if cfg.FromAddress == "" {
+		cfg.FromAddress = "pegasus-ai@localhost"
+	}
+	if cfg.MaxThreadArticles == 0 {
+		cfg.MaxThreadArticles = 40
+	}
+	return cfg
 }
 
 func (cfg ConfigStruct) OpenAISettingsForSenders(senders []string) OpenAIModelSettings {
@@ -184,4 +252,26 @@ func parseConfigEmail(value string) (string, error) {
 		return "", err
 	}
 	return strings.ToLower(parsed.Address), nil
+}
+
+func validateSHA256Fingerprint(field, value string) error {
+	normalized := normalizeFingerprint(value)
+	if len(normalized) != 64 {
+		return fmt.Errorf("config field %s must be a SHA-256 fingerprint", field)
+	}
+	for _, r := range normalized {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return fmt.Errorf("config field %s must be a SHA-256 fingerprint", field)
+		}
+	}
+	return nil
+}
+
+func normalizeFingerprint(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimPrefix(value, "sha256 fingerprint=")
+	value = strings.TrimPrefix(value, "sha256=")
+	value = strings.ReplaceAll(value, ":", "")
+	value = strings.ReplaceAll(value, " ", "")
+	return value
 }

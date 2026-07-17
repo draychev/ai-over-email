@@ -101,6 +101,54 @@ func TestLoadRejectsInvalidReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsUsenetConfig(t *testing.T) {
+	path := writeTempFile(t, `{
+  "jmap": {
+    "session_endpoint": "https://api.example/session",
+    "legacy_basic_auth_session_endpoint": "https://legacy.example/jmap"
+  },
+  "usenet": {
+    "host": "bandido",
+    "port": 563,
+    "tls_server_name": "bandido.openbsd.amsterdam",
+    "tls_cert_sha256": "4F:CF:36:5C:ED:24:7C:7D:4C:57:E2:22:4F:6B:15:D1:43:C0:AD:13:57:DC:3A:2B:59:81:CA:58:C2:42:7B:31",
+    "group": "misc.pegasus",
+    "from_address": "pegasus-ai@example.com"
+  }
+}`)
+
+	config, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	usenet := config.Usenet.Normalized()
+	if usenet.Port != 563 || usenet.Group != "misc.pegasus" || usenet.PollInterval != "1m" {
+		t.Fatalf("usenet config = %#v", usenet)
+	}
+	if usenet.TLSCertSHA256 != "4fcf365ced247c7d4c57e2224f6b15d143c0ad1357dc3a2b5981ca58c2427b31" {
+		t.Fatalf("TLSCertSHA256 = %q", usenet.TLSCertSHA256)
+	}
+}
+
+func TestLoadRejectsInvalidUsenetFingerprint(t *testing.T) {
+	path := writeTempFile(t, `{
+  "jmap": {
+    "session_endpoint": "https://api.example/session",
+    "legacy_basic_auth_session_endpoint": "https://legacy.example/jmap"
+  },
+  "usenet": {
+    "host": "bandido",
+    "group": "misc.pegasus",
+    "tls_cert_sha256": "not-a-fingerprint"
+  }
+}`)
+
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "usenet.tls_cert_sha256") {
+		t.Fatalf("Load error = %v, want fingerprint validation error", err)
+	}
+}
+
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	path := writeTempFile(t, `{
   "jmap": {

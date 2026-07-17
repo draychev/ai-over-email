@@ -11,5 +11,17 @@
     "powerful_senders": [
       "power-user@example.com"
     ]
+  },
+  "usenet": {
+    "host": "bandido",
+    "port": 563,
+    "tls_server_name": "bandido.openbsd.amsterdam",
+    "tls_cert_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "group": "misc.pegasus",
+    "poll_interval": "1m",
+    "state_path": ".tmp/usenetwatch-state.json",
+    "from_name": "Pegasus AI",
+    "from_address": "pegasus-ai@example.com",
+    "max_thread_articles": 40
   }
 }
