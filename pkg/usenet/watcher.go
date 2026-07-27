@@ -138,6 +138,11 @@ func (w *Watcher) Poll(ctx context.Context) error {
 			st.LastSeenNumber = max(st.LastSeenNumber, number)
 			continue
 		}
+		if st.isPostedReply(article.MessageID) {
+			w.logf("skipping recorded AI reply: number=%d message_id=%s", number, article.MessageID)
+			st.LastSeenNumber = max(st.LastSeenNumber, number)
+			continue
+		}
 		if w.isOwnArticle(article) {
 			w.logf("skipping own article: number=%d message_id=%s", number, article.MessageID)
 			st.LastSeenNumber = max(st.LastSeenNumber, number)

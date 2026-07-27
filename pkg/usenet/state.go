@@ -6,11 +6,25 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type state struct {
 	LastSeenNumber int               `json:"last_seen_number"`
 	Replied        map[string]string `json:"replied"`
+}
+
+func (s state) isPostedReply(messageID string) bool {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		return false
+	}
+	for _, replyMessageID := range s.Replied {
+		if strings.TrimSpace(replyMessageID) == messageID {
+			return true
+		}
+	}
+	return false
 }
 
 func loadState(path string) (state, error) {

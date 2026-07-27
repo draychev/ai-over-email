@@ -66,3 +66,21 @@ func TestIsLeafnodePlaceholder(t *testing.T) {
 		t.Fatalf("real article detected as placeholder")
 	}
 }
+
+func TestStateRecognizesPreviouslyPostedReply(t *testing.T) {
+	st := state{
+		Replied: map[string]string{
+			"<question@example.com>": "<answer@example.com>",
+		},
+	}
+
+	if !st.isPostedReply("<answer@example.com>") {
+		t.Fatal("recorded reply Message-ID was not recognized")
+	}
+	if st.isPostedReply("<question@example.com>") {
+		t.Fatal("source Message-ID was incorrectly recognized as a posted reply")
+	}
+	if st.isPostedReply("<other@example.com>") {
+		t.Fatal("unrelated Message-ID was incorrectly recognized as a posted reply")
+	}
+}
